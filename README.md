@@ -10,7 +10,7 @@ React frontend for the tv-pirate learning project.
 - **Route protection** — `RequireAuth` probes `GET /api/me` on startup (three states: probing → authenticated → redirect to `/login`). Client guards are UX only; the backend enforces auth on every request.
 - **Silent session refresh** — axios interceptor catches 401s, runs one deduplicated refresh (rotation burns tokens, so parallel refreshes would fail), retries the original request. On failure: clears state and announces `SESSION_EXPIRED_EVENT`, which bounces the app to `/login`.
 - **httpOnly cookie auth** — `withCredentials: true` everywhere; localStorage holds only a non-sensitive user object (id, username, provider).
-- **App shell** — shadcn sidebar (collapses to icon rail on desktop), avatar with initial fallback, theme toggle, sign-out. Dark palette hand-tuned.
+- **App shell** — shadcn sidebar (collapses to icon rail on desktop), avatar showing the provider picture when present (initial fallback for guests), theme toggle, sign-out. Dark palette hand-tuned.
 
 ## Run
 

@@ -1,5 +1,5 @@
 import { Home, LogOut } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import ThemeToggle from '@/components/theme-toggle'
 import {
   Sidebar,
@@ -52,9 +52,12 @@ export default function AppSidebar({ user, onLogout }: AppSidebarProps) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip={user.username}>
-              {/* Default avatar: initial fallback. Users will be able to
-                  replace this with their own image later. */}
+              {/* Provider picture when there is one (Google's "picture");
+                  guests have none and fall back to the initial. */}
               <Avatar className="size-5">
+                {user.profilePictureUrl && (
+                  <AvatarImage src={user.profilePictureUrl} alt={user.username} />
+                )}
                 <AvatarFallback className="text-xs">
                   {user.username.charAt(0).toUpperCase()}
                 </AvatarFallback>

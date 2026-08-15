@@ -9,11 +9,6 @@ export async function loginAsGuest(): Promise<StoredUser> {
   return data
 }
 
-export async function fetchHello(): Promise<string> {
-  const { data } = await client.get<string>('/api/hello')
-  return data
-}
-
 /**
  * Session probe: are the httpOnly cookies still backed by a valid session?
  * Uses plain axios on purpose — a 401 here must NOT trigger the silent

@@ -2,6 +2,8 @@ export interface StoredUser {
   id: number
   username: string
   provider: string
+  /** Provider avatar URL (Google "picture"); null for guests → default avatar. */
+  profilePictureUrl: string | null
 }
 
 // The JWT pair lives in httpOnly cookies set by the backend — JS can't (and
