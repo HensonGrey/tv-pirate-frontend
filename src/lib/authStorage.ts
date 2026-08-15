@@ -6,9 +6,7 @@ export interface StoredUser {
   profilePictureUrl: string | null
 }
 
-// The JWT pair lives in httpOnly cookies set by the backend — JS can't (and
-// shouldn't) touch them. localStorage only keeps the non-sensitive user info
-// so the UI knows whether to show the guest or the logged-in screen.
+// Tokens live in httpOnly cookies set by the backend — JS can't touch them. localStorage only keeps non-sensitive user info so the UI knows which screen to show.
 const USER_KEY = 'tv-pirate.user'
 
 export function saveUser(user: StoredUser): void {

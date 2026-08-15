@@ -10,12 +10,7 @@ function Splash() {
   )
 }
 
-/**
- * Client-side route guard (UX only — the backend enforces auth on every
- * request regardless). While the session probe is in flight, show a splash
- * so logged-in users never see the login screen flash. Once the answer is
- * known, unauthenticated visitors are redirected to /login.
- */
+/** Client-side route guard (UX only — the backend enforces auth on every request). Splash while the session probe is in flight, redirect to /login once the answer is known. */
 export default function RequireAuth({
   user,
   checked,

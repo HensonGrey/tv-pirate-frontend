@@ -20,11 +20,7 @@ interface AppSidebarProps {
   onLogout: () => void
 }
 
-/**
- * Main app sidebar: brand, nav (stub for now), and the user section in the
- * footer. collapsible="icon" makes the desktop collapse shrink to icons with
- * tooltips instead of sliding fully off-screen.
- */
+/** Brand, nav stub, and user section. collapsible="icon" shrinks the desktop sidebar to icons with tooltips instead of sliding off-screen. */
 export default function AppSidebar({ user, onLogout }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon">

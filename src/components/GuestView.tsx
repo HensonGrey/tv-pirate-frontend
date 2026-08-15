@@ -9,12 +9,13 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import ConfirmDialog from '@/components/confirm-dialog'
+import ThemeIconButton from '@/components/theme-icon-button'
 import { loginAsGuest } from '@/api/auth'
 
 /** Official Google "G" mark as inline SVG — no external assets needed. */
 function GoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47a5.57 5.57 0 0 1-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
@@ -35,12 +36,7 @@ function GoogleIcon() {
   )
 }
 
-/**
- * Entry screen: providers (Google, future) above, guest below the divider.
- * The guest path asks for explicit confirmation first — a guest session is
- * browser-bound and can't be upgraded, so the user should know what they're
- * getting into.
- */
+/** Entry screen: Google above, guest below the divider. The guest path asks for confirmation first — the session is browser-bound and can't be upgraded. */
 export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [loading, setLoading] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -60,30 +56,35 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center p-4">
-      <Card className="w-full max-w-sm shadow-lg">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Watch something idk</CardTitle>
-          <CardDescription>Watch together. No account needed.</CardDescription>
+    <div className="relative flex min-h-dvh items-center justify-center p-4">
+      <ThemeIconButton className="absolute top-4 right-4 bg-background/50 backdrop-blur-sm" />
+
+      {/* ring-foreground/25: crisp card edge that reads in both themes. */}
+      <Card className="w-full max-w-md shadow-lg ring-foreground/25 [--card-spacing:--spacing(7)]">
+        <CardHeader className="items-center gap-1.5 text-center">
+          <CardTitle className="font-heading text-2xl font-bold tracking-tight">
+            tv-pirate
+          </CardTitle>
+          <CardDescription className="text-base">Watch together. No account needed.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Button
             variant="outline"
-            className="mx-auto size-12"
             aria-label="Continue with Google"
+            className="mx-auto size-12 border-foreground/20 dark:border-foreground/25"
             onClick={() => toast.info('Google login is not wired up yet — coming soon.')}
           >
             <GoogleIcon />
           </Button>
 
           {/* Divider between providers and guest. */}
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span className="h-px flex-1 bg-border" />
             or
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          <Button className="w-full" size="lg" onClick={() => setConfirmOpen(true)}>
+          <Button size="lg" className="h-11 w-full" onClick={() => setConfirmOpen(true)}>
             Continue as guest
           </Button>
         </CardContent>
@@ -93,15 +94,14 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Continue as guest?"
-        confirmLabel="Continue as guest"
+        confirmLabel="Continue"
         loading={loading}
         onConfirm={handleGuestLogin}
         description={
-          <>
-            Your guest session lives only in this browser and on this device.
-            It can't be upgraded to a full account later, and clearing your
-            cookies or switching devices starts you over with a fresh guest.
-          </>
+          <div className="flex flex-col gap-1.5">
+            <p>Your session is tied to this browser — clearing cookies starts you over.</p>
+            <p>It can't be upgraded to a full account later.</p>
+          </div>
         }
       />
     </div>

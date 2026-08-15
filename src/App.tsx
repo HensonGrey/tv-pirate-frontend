@@ -10,12 +10,10 @@ import { getUser, type StoredUser } from '@/lib/authStorage'
 
 function App() {
   const [user, setUser] = useState<StoredUser | null>(getUser)
-  // authChecked starts false: the UI waits for the /api/me probe before
-  // deciding between the app and the login screen.
+  // authChecked: false until the /api/me probe answers.
   const [authChecked, setAuthChecked] = useState(false)
 
-  // Session probe: the httpOnly cookies are invisible to JS, so the only way
-  // to answer "am I logged in?" is to ask the backend.
+  // Probe /api/me — the httpOnly cookies are invisible to JS.
   useEffect(() => {
     let cancelled = false
     fetchMe().then((me) => {
@@ -28,8 +26,7 @@ function App() {
     }
   }, [])
 
-  // If the silent refresh fails mid-session, the API client announces it via
-  // a custom event — the guard then redirects to /login.
+  // The API client announces a failed mid-session refresh via a custom event.
   useEffect(() => {
     function handleSessionExpired() {
       setUser(getUser())

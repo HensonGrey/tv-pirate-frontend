@@ -9,12 +9,7 @@ export async function loginAsGuest(): Promise<StoredUser> {
   return data
 }
 
-/**
- * Session probe: are the httpOnly cookies still backed by a valid session?
- * Uses plain axios on purpose — a 401 here must NOT trigger the silent
- * refresh, it's an honest answer ("you're not logged in"), not an error to
- * recover from.
- */
+/** Session probe: plain axios on purpose — a 401 here is an honest "not logged in", not something the silent refresh should recover. */
 export async function fetchMe(): Promise<StoredUser | null> {
   try {
     const { data } = await axios.get<StoredUser>(`${API_BASE}/api/me`, { withCredentials: true })
@@ -26,10 +21,7 @@ export async function fetchMe(): Promise<StoredUser | null> {
   }
 }
 
-/**
- * Local-first logout: the UI clears immediately, the server revoke is
- * best-effort (if it fails, the refresh token still expires on its own).
- */
+/** Local-first logout: UI clears immediately, server revoke is best-effort. */
 export async function logout(): Promise<void> {
   clearUser()
   try {

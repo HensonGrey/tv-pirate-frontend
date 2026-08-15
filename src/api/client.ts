@@ -5,23 +5,16 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8
 
 export const SESSION_EXPIRED_EVENT = 'tv-pirate:session-expired'
 
-// withCredentials: the browser may send (and store) the httpOnly auth
-// cookies on cross-origin calls (5173 → 8080). Without it, cookies would
-// silently never leave the browser and every call would look unauthenticated.
+// withCredentials lets the browser send (and store) the httpOnly auth cookies cross-origin (5173 → 8080).
 export const client = axios.create({ baseURL: API_BASE, withCredentials: true })
 
-// --- Silent refresh, deduplicated ---
-// If several requests 401 at the same moment, they must share ONE refresh
-// call: the backend burns the refresh token on every use (rotation), so
-// parallel refreshes would all fail except one. The refresh token itself
-// rides in a cookie — the client never sees or stores it.
+// One shared refresh per burst: rotation burns the refresh token on every use, so parallel 401s must share a single call. vault:auth-deep-dive#tokens
 let refreshPromise: Promise<void> | null = null
 
 function refreshSession(): Promise<void> {
   if (!refreshPromise) {
     refreshPromise = axios
-      // Plain axios on purpose: this call must NOT pass through the
-      // interceptors, or a failed refresh would try to refresh itself.
+      // Plain axios: a failed refresh must not try to refresh itself.
       .post(`${API_BASE}/api/auth/refresh`, null, { withCredentials: true })
       .then(() => undefined)
       .finally(() => {
@@ -31,7 +24,7 @@ function refreshSession(): Promise<void> {
   return refreshPromise
 }
 
-// --- Response interceptor: on 401, refresh once and retry the original request ---
+// On 401: refresh once, then retry the original request.
 client.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
