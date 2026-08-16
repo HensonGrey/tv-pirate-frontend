@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { Skull, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import TopNav, { type TabId } from '@/components/top-nav'
@@ -19,6 +20,7 @@ import {
   type PageResponse,
 } from '@/api/tmdb'
 import { cn } from '@/lib/utils'
+import { slugify } from '@/lib/slug'
 import type { StoredUser } from '@/lib/authStorage'
 
 interface HomePageProps {
@@ -202,8 +204,26 @@ async function loadPage(
 /** The browse home, fed by the TMDB proxy: one API call per tab, debounced
  * search, pagination from the response. While loading, previous results
  * stay dimmed; the skeleton only shows when there's nothing yet. */
+/** Fold the tab/query a watch-page nav click hands over via route state
+ * into the initial browse state (debouncedQuery prefilled so the search
+ * fires immediately instead of waiting out the debounce). */
+function initBrowseState(nav: { tab?: TabId; query?: string } | null): BrowseState {
+  return {
+    ...initialState,
+    tab: nav?.tab ?? initialState.tab,
+    query: nav?.query ?? '',
+    debouncedQuery: nav?.query ?? '',
+  }
+}
+
 export default function HomePage({ user, onLogout }: HomePageProps) {
-  const [state, dispatch] = useReducer(browseReducer, initialState)
+  const location = useLocation()
+  const [state, dispatch] = useReducer(
+    browseReducer,
+    (location.state as { tab?: TabId; query?: string } | null) ?? null,
+    initBrowseState
+  )
+  const navigate = useNavigate()
   const {
     tab,
     query,
@@ -504,7 +524,11 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             <Pagination
               page={page}
               pageCount={pageCount}
-              onPageChange={(next) => dispatch({ type: 'page', page: next })}
+              onPageChange={(next) => {
+                dispatch({ type: 'page', page: next })
+                // Scroll lives here, not in the reducer — reducers stay pure.
+                window.scrollTo(0, 0)
+              }}
             />
           </div>
         )}
@@ -515,6 +539,13 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
           item={selectedDetail ?? selected}
           isFavourite={favourites.has(selected.id)}
           onToggleFavourite={() => toggleFavourite(selected)}
+          onWatch={() => {
+            const target = selectedDetail ?? selected
+            if (!target || target.mediaType == null) return
+            // The route carries the title's identity (id + slug); coordinates
+            // stay in the watch page's own state.
+            navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`)
+          }}
           onClose={() => dispatch({ type: 'select', item: null })}
         />
       )}

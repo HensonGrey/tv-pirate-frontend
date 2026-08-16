@@ -10,6 +10,8 @@ interface MediaModalProps {
   item: MediaItem & { progress?: number }
   isFavourite: boolean
   onToggleFavourite: () => void
+  /** Opens the watch view; the modal itself stays as-is (reworked later). */
+  onWatch: () => void
   onClose: () => void
 }
 
@@ -30,6 +32,7 @@ export default function MediaModal({
   item,
   isFavourite,
   onToggleFavourite,
+  onWatch,
   onClose,
 }: MediaModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -188,6 +191,7 @@ export default function MediaModal({
             <div className="mt-auto flex items-center gap-2 pt-2">
               <Button
                 size="lg"
+                onClick={onWatch}
                 className="bg-gold font-semibold text-gold-foreground hover:bg-gold/85"
               >
                 <Play />

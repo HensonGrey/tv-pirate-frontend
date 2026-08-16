@@ -72,6 +72,29 @@ export async function fetchTitleDetail(type: MediaType, id: number): Promise<Med
   return data
 }
 
+/** One episode of a season — feeds the picker and the episode description. */
+export interface EpisodeInfo {
+  episodeNumber: number | null
+  name: string | null
+  overview: string | null
+  runtimeMinutes: number | null
+}
+
+/** One season of a show: identity + poster for the picker's visuals, and
+ * the episode list the picker selects from. */
+export interface SeasonInfo {
+  seasonNumber: number | null
+  name: string | null
+  posterUrl: string | null
+  episodes: EpisodeInfo[]
+}
+
+/** One season of a show (poster + names + overviews for the picker). */
+export async function fetchSeason(tvId: number, season: number): Promise<SeasonInfo> {
+  const { data } = await client.get<SeasonInfo>(`/api/tmdb/tv/${tvId}/season/${season}`)
+  return data
+}
+
 /** The selectable genre list, movie + tv tables merged (see GenreInfo). */
 export async function fetchGenres(): Promise<GenreInfo[]> {
   const { data } = await client.get<GenreInfo[]>('/api/tmdb/genres')

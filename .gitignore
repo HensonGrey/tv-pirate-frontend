@@ -25,3 +25,7 @@ dist-ssr
 
 # local env (copy .env.example to .env / .env.local if needed)
 .env
+
+# Playwright smoke-test artifacts
+scripts/.smoke-*
+scripts/.shot-*

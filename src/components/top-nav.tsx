@@ -23,6 +23,12 @@ interface TopNavProps {
   onTabChange: (tab: TabId) => void
   query: string
   onQueryChange: (query: string) => void
+  /** Optional Enter handler — pages that aren't searchable (e.g. watch)
+   *  use it to carry the query elsewhere instead of searching live. */
+  onSubmit?: () => void
+  /** Watch pages render a wider content column than home — the nav follows
+   *  it so the edges stay aligned. */
+  wide?: boolean
   user: StoredUser
   onLogout: () => void
 }
@@ -40,6 +46,8 @@ export default function TopNav({
   onTabChange,
   query,
   onQueryChange,
+  onSubmit,
+  wide = false,
   user,
   onLogout,
 }: TopNavProps) {
@@ -67,6 +75,7 @@ export default function TopNav({
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') setMobileSearchOpen(false)
+          if (event.key === 'Enter') onSubmit?.()
         }}
         placeholder="Search movies & shows"
         aria-label="Search movies and shows"
@@ -77,7 +86,12 @@ export default function TopNav({
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-1 px-4 sm:gap-2 sm:px-6 lg:px-8">
+      <div
+        className={cn(
+          'mx-auto flex h-14 items-center gap-1 px-4 sm:gap-2 sm:px-6 lg:px-8',
+          wide ? 'max-w-384' : 'max-w-7xl'
+        )}
+      >
         {/* Brand — clicking it always leads home (trending). */}
         <button
           type="button"

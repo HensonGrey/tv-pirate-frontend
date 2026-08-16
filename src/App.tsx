@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { Toaster } from '@/components/ui/sonner'
 import GuestView from '@/components/GuestView'
 import HomePage from '@/pages/home'
+import WatchPage from '@/pages/watch'
 import RequireAuth from '@/components/require-auth'
 import { SESSION_EXPIRED_EVENT } from '@/api/client'
 import { fetchMe, logout } from '@/api/auth'
@@ -57,6 +58,17 @@ function App() {
           <Route element={<RequireAuth user={user} checked={authChecked} />}>
             {/* user is non-null here — RequireAuth redirects otherwise */}
             <Route path="/" element={<HomePage user={user!} onLogout={handleLogout} />} />
+            {/* Watch routes carry the title's identity only; season/episode
+                stay in component state (server progress will own them).
+                The watch page renders the same app shell as home. */}
+            <Route
+              path="/movie/:id"
+              element={<WatchPage mediaType="movie" user={user!} onLogout={handleLogout} />}
+            />
+            <Route
+              path="/tv/:id"
+              element={<WatchPage mediaType="tv" user={user!} onLogout={handleLogout} />}
+            />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

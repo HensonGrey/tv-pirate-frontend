@@ -5,6 +5,11 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>frontend</title>
+    <!-- Inert tag: vidstack's hls loader skips its CDN fetch when a script tag
+         with this exact src exists, then takes window.Hls — which main.tsx
+         sets from our bundled hls.js. type="application/json" means the
+         browser never fetches this tag itself. vault:streaming-providers-deep-dive#architecture -->
+    <script type="application/json" src="https://cdn.jsdelivr.net/npm/hls.js@^1.5.0/dist/hls.js"></script>
   </head>
   <body>
     <div id="root"></div>

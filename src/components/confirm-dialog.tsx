@@ -45,7 +45,12 @@ export default function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
+          {/* Description renders a <p> by default — callers pass block content
+              (divs/paragraphs), which is invalid HTML inside a p. Rendering a
+              div keeps the slot and styles but accepts any ReactNode. */}
+          {description && (
+            <AlertDialogDescription render={<div />}>{description}</AlertDialogDescription>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
