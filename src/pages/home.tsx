@@ -398,6 +398,11 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
           <FeaturedBanner
             item={visibleItems[0]}
             onDetails={(picked) => dispatch({ type: 'select', item: picked })}
+            onWatch={(target) => {
+              // Same route as the card modal's Continue watching.
+              if (!target || target.mediaType == null) return
+              navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`)
+            }}
           />
         )}
 
