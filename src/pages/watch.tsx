@@ -10,9 +10,13 @@ import { MediaPlayer, MediaProvider, Poster } from '@vidstack/react'
 import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/layouts/default'
 import { Button } from '@/components/ui/button'
 import TopNav from '@/components/top-nav'
+import CaptionOverlay from '@/components/caption-overlay'
+import SubtitleDelayMenu from '@/components/subtitle-delay-menu'
 import { cn } from '@/lib/utils'
 import { fetchSeason, fetchTitleDetail, type MediaItem, type MediaType, type SeasonInfo } from '@/api/tmdb'
 import { absoluteProxyUrl, fetchSources, fetchStreamProviders, type StreamSourceDto } from '@/api/stream'
+import { fetchSubtitleTrack } from '@/api/subtitles'
+import { parseVtt, type VttCue } from '@/lib/vtt'
 import { getPreferredProvider, setPreferredProvider } from '@/lib/providerPreference'
 import type { StoredUser } from '@/lib/authStorage'
 
@@ -47,6 +51,7 @@ function chipClasses(selected: boolean) {
       : 'border-border text-muted-foreground hover:border-gold/50 hover:text-foreground'
   )
 }
+
 
 /** Small uppercase label that anchors each picker section — gold so the
  * labels read as headings, not part of the muted content they describe. */
@@ -86,6 +91,12 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
 
   const [resolving, setResolving] = useState(false)
   const [sources, setSources] = useState<StreamSourceDto[] | null>(null)
+  // Parsed caption cues for the current title/episode (empty = no captions).
+  const [subtitleCues, setSubtitleCues] = useState<VttCue[]>([])
+  // Manual sync shift in half-second ticks: every sub file is timed to its
+  // own release, so a constant offset against the stream is normal —
+  // positive = delay the track. Ticks keep the 0.5s steps float-drift-free.
+  const [subtitleDelay, setSubtitleDelay] = useState(0)
 
   // Monotonic request tokens so a fast season-flip can't deliver stale episodes.
   const episodeRequestId = useRef(0)
@@ -118,9 +129,9 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
       .then((list) => {
         if (providerRequestId.current !== id) return
         setProviders(list)
-        // A remembered provider can vanish from the registry (vidlink is
-        // registered out while its upstream serves expired URLs) — fall back
-        // to the first listed instead of resolving a name the backend rejects.
+        // A remembered provider can vanish from the registry (removed, or a
+        // burned upstream) — fall back to the first listed instead of
+        // resolving a name the backend rejects.
         setProvider((current) =>
           current != null && list.includes(current) ? current : (list[0] ?? null)
         )
@@ -181,6 +192,25 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
       cancelled = true
     }
   }, [provider, item, mediaType, tmdbId, isTv, season, episode])
+
+  // Subtitles are an enhancement: one silent fetch per title/episode, and
+  // the player just runs caption-less when the lookup misses.
+  useEffect(() => {
+    if (!item) return
+    let cancelled = false
+    setSubtitleCues([])
+    setSubtitleDelay(0) // a new file is a new release — its own offset
+    fetchSubtitleTrack(mediaType, tmdbId, isTv ? season : undefined, isTv ? episode : undefined)
+      .then((vtt) => {
+        if (!cancelled && vtt) setSubtitleCues(parseVtt(vtt))
+      })
+      .catch(() => {
+        // No captions is a graceful state — never a toast.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mediaType, tmdbId, isTv, season, episode, item])
 
   function goBack() {
     // Direct URL visits have no in-app history — navigate(-1) would leave the app.
@@ -379,7 +409,21 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                       <Poster className="vds-poster" src={playerThumb} alt={item.title ?? ''} />
                     )}
                   </MediaProvider>
-                  <DefaultVideoLayout icons={defaultLayoutIcons} />
+                  {subtitleCues.length > 0 && (
+                    <CaptionOverlay cues={subtitleCues} delaySeconds={subtitleDelay / 2} />
+                  )}
+                  <DefaultVideoLayout
+                    icons={defaultLayoutIcons}
+                    slots={
+                      subtitleCues.length > 0
+                        ? {
+                            settingsMenuItemsEnd: (
+                              <SubtitleDelayMenu delay={subtitleDelay} onChange={setSubtitleDelay} />
+                            ),
+                          }
+                        : undefined
+                    }
+                  />
                 </MediaPlayer>
               ) : (
                 <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -445,7 +489,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                             type="button"
                             aria-label={`Episode ${ep.episodeNumber}: ${ep.name ?? 'Untitled'}`}
                             aria-pressed={episode === ep.episodeNumber}
-                            title={ep.name}
+                            title={ep.name ?? 'Untitled'}
                             onClick={() => setEpisode(ep.episodeNumber ?? 1)}
                             className={cn(
                               'grid aspect-square place-items-center rounded-lg border text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
@@ -550,6 +594,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                   ))}
                 </div>
               </div>
+
             </div>
           </div>
         </div>
