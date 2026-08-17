@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { Skull, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,6 +19,7 @@ import {
   type MediaType,
   type PageResponse,
 } from '@/api/tmdb'
+import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress'
 import { cn } from '@/lib/utils'
 import { slugify } from '@/lib/slug'
 import type { StoredUser } from '@/lib/authStorage'
@@ -252,6 +253,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
   // The modal's detail fetch may only deliver into the modal that asked.
   const selectedRef = useRef<MediaItem | null>(null)
   selectedRef.current = selected
+  // Real watch progress feeds the modal bars, keyed mediaType:tmdbId.
+  const [progressByTitle, setProgressByTitle] = useState<Map<string, ProgressRow>>(new Map())
 
   const trimmed = query.trim()
   const debouncedTrimmed = debouncedQuery.trim()
@@ -272,6 +275,28 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     fetchGenres()
       .then((list) => dispatch({ type: 'genres-loaded', genreList: list }))
       .catch(() => toast.error('Could not load the genre list'))
+  }, [])
+
+  // Real watch progress feeds the modal bars — one fetch per visit. Rows
+  // come newest-first, so the first row per title is the winning one.
+  useEffect(() => {
+    let cancelled = false
+    fetchProgress()
+      .then((rows) => {
+        if (cancelled) return
+        const map = new Map<string, ProgressRow>()
+        for (const row of rows) {
+          const key = `${row.mediaType}:${row.tmdbId}`
+          if (!map.has(key)) map.set(key, row)
+        }
+        setProgressByTitle(map)
+      })
+      .catch(() => {
+        // No bars is a graceful state — the modal just shows "Watch".
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // The main fetch. Re-runs on any tab/filter/page change; stale responses
@@ -321,6 +346,28 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
       : toast.success(`Added “${item.title ?? 'Untitled'}” to your list`)
   }
 
+  /** "Start over": clear every saved row for the title (a show restarts
+   * from S1E1), then jump into the player. Optimistic with a revert. */
+  function startOver(target: MediaItem) {
+    if (!target.mediaType) return
+    const key = `${target.mediaType}:${target.id}`
+    const row = progressByTitle.get(key)
+    setProgressByTitle((current) => {
+      const next = new Map(current)
+      next.delete(key)
+      return next
+    })
+    clearProgress(target.mediaType, target.id).catch(() => {
+      setProgressByTitle((current) => {
+        const next = new Map(current)
+        if (row) next.set(key, row)
+        return next
+      })
+      toast.error('Could not clear progress')
+    })
+    navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`)
+  }
+
   // Client-side narrowing of whatever page we hold: trending and search
   // return mixed pages, so the toggle can still slice them.
   const visibleItems =
@@ -341,6 +388,16 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
       ))}
     </div>
   )
+
+  // The modal's bar: the winning row for the selected title, as a percent.
+  const selectedProgressRow =
+    selected?.mediaType != null
+      ? progressByTitle.get(`${selected.mediaType}:${selected.id}`)
+      : undefined
+  const selectedProgressPct =
+    selectedProgressRow?.durationSeconds != null
+      ? Math.round((selectedProgressRow.progressSeconds / selectedProgressRow.durationSeconds) * 100)
+      : undefined
 
   return (
     <div className="min-h-dvh">
@@ -541,7 +598,12 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
 
       {selected && (
         <MediaModal
-          item={selectedDetail ?? selected}
+          item={{
+            ...(selectedDetail ?? selected),
+            progress: selectedProgressPct,
+            progressSeason: selectedProgressRow?.season ?? undefined,
+            progressEpisode: selectedProgressRow?.episode ?? undefined,
+          }}
           isFavourite={favourites.has(selected.id)}
           onToggleFavourite={() => toggleFavourite(selected)}
           onWatch={() => {
@@ -551,6 +613,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             // stay in the watch page's own state.
             navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`)
           }}
+          onStartOver={() => startOver(selectedDetail ?? selected)}
           onClose={() => dispatch({ type: 'select', item: null })}
         />
       )}

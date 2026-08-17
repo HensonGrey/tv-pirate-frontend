@@ -11,11 +11,13 @@ import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/l
 import { Button } from '@/components/ui/button'
 import TopNav from '@/components/top-nav'
 import CaptionOverlay from '@/components/caption-overlay'
+import ProgressTracker from '@/components/progress-tracker'
 import SubtitleDelayMenu from '@/components/subtitle-delay-menu'
 import { cn } from '@/lib/utils'
 import { fetchSeason, fetchTitleDetail, type MediaItem, type MediaType, type SeasonInfo } from '@/api/tmdb'
 import { absoluteProxyUrl, fetchSources, fetchStreamProviders, type StreamSourceDto } from '@/api/stream'
 import { fetchSubtitleTrack } from '@/api/subtitles'
+import { fetchProgress, type ProgressRow } from '@/api/progress'
 import { parseVtt, type VttCue } from '@/lib/vtt'
 import { getPreferredProvider, setPreferredProvider } from '@/lib/providerPreference'
 import type { StoredUser } from '@/lib/authStorage'
@@ -61,9 +63,9 @@ function Kicker({ children }: { children: React.ReactNode }) {
 
 /** Full-screen watch page at /movie/{id-slug} or /tv/{id-slug}. The URL
  * carries only the title's identity — season/episode live in component
- * state (TV defaults to S1E1; the resume seam where server-side watch
- * progress replaces the defaults once it lands). Clicking the video
- * surface starts playback — no play button. vault:streaming-providers-deep-dive#architecture */
+ * state (TV defaults to S1E1; saved watch progress seeds them on mount).
+ * Clicking the video surface starts playback — no play button.
+ * vault:streaming-providers-deep-dive#architecture */
 export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps) {
   const navigate = useNavigate()
   // "/tv/1396-breaking-bad" — the leading digits are the tmdb id, the slug is decorative.
@@ -79,9 +81,19 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
   const [loadError, setLoadError] = useState(false)
 
   const [providers, setProviders] = useState<string[]>([])
-  // Resume seam: these two defaults are what real per-user progress replaces later.
   const [season, setSeason] = useState(1)
   const [episode, setEpisode] = useState(1)
+  // Saved positions for this title — seeds the resume seek and the pickers.
+  const [titleProgress, setTitleProgress] = useState<ProgressRow[]>([])
+  // Seek target for the player's next mount; null = start from zero.
+  const [resumeTarget, setResumeTarget] = useState<number | null>(null)
+  // The season/episode the current sources were resolved for. The tracker
+  // renders only while the stream matches the picker, so a heartbeat can
+  // never credit the old stream's position to a newly picked episode.
+  const [resolvedCoords, setResolvedCoords] = useState<{
+    season: number
+    episode: number
+  } | null>(null)
   const [provider, setProvider] = useState<string | null>(getPreferredProvider())
   // Local placeholder until favourites are server-backed and shared with home.
   const [isFavourite, setIsFavourite] = useState(false)
@@ -101,6 +113,9 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
   // Monotonic request tokens so a fast season-flip can't deliver stale episodes.
   const episodeRequestId = useRef(0)
   const providerRequestId = useRef(0)
+  // Live position shared with ProgressTracker: a provider switch remounts
+  // the player and continues from here.
+  const lastPositionRef = useRef(0)
 
   // The page owns its data (the URL is the only seed): a reload refetches
   // the title, so nothing depends on navigation state surviving.
@@ -121,6 +136,40 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
       cancelled = true
     }
   }, [mediaType, tmdbId])
+
+  // Watch progress seeds the resume point: the newest row for this title
+  // picks season/episode (tv) and becomes the player's seek target.
+  // Finished rows (>= 97%) don't resume — that would replay the credits.
+  useEffect(() => {
+    if (!tmdbId) return
+    let cancelled = false
+    fetchProgress()
+      .then((rows) => {
+        if (cancelled) return
+        const forTitle = rows.filter(
+          (row) => row.tmdbId === tmdbId && row.mediaType === mediaType
+        )
+        setTitleProgress(forTitle)
+        const latest = forTitle[0] // the backend sorts newest first
+        if (!latest) return
+        const finished =
+          latest.durationSeconds != null &&
+          latest.progressSeconds >= latest.durationSeconds * 0.97
+        if (!finished) {
+          setResumeTarget(latest.progressSeconds)
+          if (mediaType === 'tv' && latest.season != null && latest.episode != null) {
+            setSeason(latest.season)
+            setEpisode(latest.episode)
+          }
+        }
+      })
+      .catch(() => {
+        // Progress is an enhancement — no row, no resume, no toast.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tmdbId, mediaType])
 
   // Provider list loads once; the remembered one wins, else the first listed.
   useEffect(() => {
@@ -180,6 +229,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
       .then((result) => {
         if (cancelled) return
         setSources(result)
+        setResolvedCoords(isTv ? { season, episode } : null)
       })
       .catch(() => {
         if (cancelled) return
@@ -226,6 +276,17 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
   function selectSeason(next: number) {
     setSeason(next)
     setEpisode(1) // a new season starts at its first episode
+    // Resume in-session too: a saved S4E1 continues, everything else starts at 0.
+    const row = titleProgress.find((r) => r.season === next && r.episode === 1)
+    setResumeTarget(row?.progressSeconds ?? null)
+    lastPositionRef.current = 0
+  }
+
+  function selectEpisode(next: number) {
+    setEpisode(next)
+    const row = titleProgress.find((r) => r.season === season && r.episode === next)
+    setResumeTarget(row?.progressSeconds ?? null)
+    lastPositionRef.current = 0
   }
 
   const selectedEpisode = isTv
@@ -412,6 +473,19 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                   {subtitleCues.length > 0 && (
                     <CaptionOverlay cues={subtitleCues} delaySeconds={subtitleDelay / 2} />
                   )}
+                  {(!isTv ||
+                    (resolvedCoords?.season === season && resolvedCoords?.episode === episode)) && (
+                    <ProgressTracker
+                      key={isTv ? `s${season}e${episode}` : 'movie'}
+                      tmdbId={tmdbId}
+                      mediaType={mediaType}
+                      season={isTv ? season : undefined}
+                      episode={isTv ? episode : undefined}
+                      resumeTarget={resumeTarget}
+                      onResumeConsumed={() => setResumeTarget(null)}
+                      lastPositionRef={lastPositionRef}
+                    />
+                  )}
                   <DefaultVideoLayout
                     icons={defaultLayoutIcons}
                     slots={
@@ -490,7 +564,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                             aria-label={`Episode ${ep.episodeNumber}: ${ep.name ?? 'Untitled'}`}
                             aria-pressed={episode === ep.episodeNumber}
                             title={ep.name ?? 'Untitled'}
-                            onClick={() => setEpisode(ep.episodeNumber ?? 1)}
+                            onClick={() => selectEpisode(ep.episodeNumber ?? 1)}
                             className={cn(
                               'grid aspect-square place-items-center rounded-lg border text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
                               episode === ep.episodeNumber

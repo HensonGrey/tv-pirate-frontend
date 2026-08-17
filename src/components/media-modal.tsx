@@ -6,24 +6,22 @@ import { cn } from '@/lib/utils'
 import type { MediaItem } from '@/api/tmdb'
 
 interface MediaModalProps {
-  /** Real items have no progress until watch tracking exists — see mockProgressFor. */
-  item: MediaItem & { progress?: number }
+  /** Real per-user watch progress (percent 0–100) plus the episode that
+   * owns the row — home computes it from the saved positions.
+   * vault:watch-progress-deep-dive#schema */
+  item: MediaItem & { progress?: number; progressSeason?: number; progressEpisode?: number }
   isFavourite: boolean
   onToggleFavourite: () => void
   /** Opens the watch view; the modal itself stays as-is (reworked later). */
   onWatch: () => void
+  /** Clears the saved row and starts from zero (only shown with progress). */
+  onStartOver: () => void
   onClose: () => void
 }
 
 function formatRuntime(minutes: number) {
   const h = Math.floor(minutes / 60)
   return `${h}h ${minutes % 60}m`
-}
-
-/** MOCKED watch progress — real per-user tracking is a planned feature;
- * delete this and read real progress once it lands. vault:tmdb-deep-dive#mock-progress */
-function mockProgressFor(id: number): number {
-  return 8 + ((id * 37) % 89) // 8–96%
 }
 
 /** Detail dialog for a selected title. Hand-rolled (no dialog primitive
@@ -33,6 +31,7 @@ export default function MediaModal({
   isFavourite,
   onToggleFavourite,
   onWatch,
+  onStartOver,
   onClose,
 }: MediaModalProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -51,9 +50,16 @@ export default function MediaModal({
     }
   }, [onClose])
 
-  const progress =
-    item.progress ?? (item.mediaType === 'tv' ? mockProgressFor(item.id) : undefined)
-  const watchLabel = progress != null ? 'Continue watching' : 'Watch'
+  const progress = item.progress
+  // An episode you finished isn't "continue watching" — it replays from zero.
+  const isFinished = progress != null && progress >= 97
+  const watchLabel = progress != null && !isFinished ? 'Continue watching' : 'Watch'
+  const progressLabel =
+    progress != null && !isFinished
+      ? item.progressSeason != null
+        ? `S${item.progressSeason}E${item.progressEpisode} · ${progress}% watched`
+        : `${progress}% watched`
+      : null
 
   // Same pattern as the banner: the meta line only shows what exists.
   const metaParts: ReactNode[] = []
@@ -145,16 +151,17 @@ export default function MediaModal({
                   <Layers aria-hidden className="size-3.5" />
                   {item.seasons} season{item.seasons === 1 ? '' : 's'}
                   {item.episodes != null && ` · ${item.episodes} episodes`}
-                  {progress != null && ` · ${progress}% watched`}
+                  {progressLabel != null && ` · ${progressLabel}`}
                 </p>
               )}
               {item.mediaType === 'movie' && item.runtimeMinutes != null && (
                 <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock aria-hidden className="size-3.5" />
                   {formatRuntime(item.runtimeMinutes)}
+                  {progressLabel != null && ` · ${progressLabel}`}
                 </p>
               )}
-              {progress != null && (
+              {progress != null && !isFinished && (
                 <div
                   role="progressbar"
                   aria-valuenow={progress}
@@ -197,8 +204,8 @@ export default function MediaModal({
                 <Play />
                 {watchLabel}
               </Button>
-              {progress != null && (
-                <Button variant="outline" size="lg">
+              {progress != null && !isFinished && (
+                <Button variant="outline" size="lg" onClick={onStartOver}>
                   <RotateCcw />
                   Start over
                 </Button>
