@@ -11,6 +11,7 @@ import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/l
 import { Button } from '@/components/ui/button';
 import TopNav from '@/components/top-nav';
 import CaptionOverlay from '@/components/caption-overlay';
+import Kicker from '@/components/kicker';
 import ProgressTracker from '@/components/progress-tracker';
 import SubtitleDelayMenu from '@/components/subtitle-delay-menu';
 import { cn } from '@/lib/utils';
@@ -64,12 +65,6 @@ function chipClasses(selected: boolean) {
             ? 'border-gold bg-gold font-semibold text-gold-foreground shadow-sm'
             : 'border-border text-muted-foreground hover:border-gold/50 hover:text-foreground',
     );
-}
-
-/** Small uppercase label that anchors each picker section — gold so the
- * labels read as headings, not part of the muted content they describe. */
-function Kicker({ children }: { children: React.ReactNode }) {
-    return <p className="text-xs font-bold tracking-wider text-gold uppercase">{children}</p>;
 }
 
 /** Full-screen watch page at /movie/{id-slug} or /tv/{id-slug}. The URL

@@ -5,11 +5,15 @@ import type { MediaItem } from '@/api/tmdb';
 interface MediaCardProps {
     item: MediaItem;
     onSelect: (item: MediaItem) => void;
+    /** Watch progress as a percent — renders the gold bar (library cards). */
+    progressPct?: number;
+    /** Small badge chip on the poster, e.g. "S2E5" for tv progress. */
+    badge?: string;
 }
 
 /** Poster card in a browse grid. The whole card is one button: the poster
  * zooms slightly and a play hint fades in on hover/focus. */
-export default function MediaCard({ item, onSelect }: MediaCardProps) {
+export default function MediaCard({ item, onSelect, progressPct, badge }: MediaCardProps) {
     const hasMeta = item.rating != null || item.year != null;
     return (
         <button
@@ -28,6 +32,22 @@ export default function MediaCard({ item, onSelect }: MediaCardProps) {
                 >
                     <Play className="size-10 text-white opacity-0 drop-shadow-lg transition-all duration-300 group-focus-visible:opacity-100 group-hover:opacity-100" />
                 </span>
+                {badge != null && (
+                    <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur-sm">
+                        {badge}
+                    </span>
+                )}
+                {progressPct != null && (
+                    <div
+                        aria-hidden
+                        className="absolute inset-x-2 bottom-2 h-1.5 overflow-hidden rounded-full bg-black/50"
+                    >
+                        <div
+                            className="h-full rounded-full bg-gold"
+                            style={{ width: `${progressPct}%` }}
+                        />
+                    </div>
+                )}
             </div>
             <span className="w-full truncate text-sm font-medium">{item.title ?? 'Untitled'}</span>
             {hasMeta && (

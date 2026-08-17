@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Film, Flame, LayoutGrid, LogOut, Search, Skull, Tv } from 'lucide-react';
+import { Film, Flame, LayoutGrid, Library, LogOut, Search, Skull, Tv } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/confirm-dialog';
@@ -9,13 +9,14 @@ import ThemeIconButton from '@/components/theme-icon-button';
 import { cn } from '@/lib/utils';
 import type { StoredUser } from '@/lib/authStorage';
 
-export type TabId = 'trending' | 'shows' | 'movies' | 'genres';
+export type TabId = 'trending' | 'shows' | 'movies' | 'genres' | 'library';
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
     { id: 'trending', label: 'Trending', icon: Flame },
     { id: 'shows', label: 'Shows', icon: Tv },
     { id: 'movies', label: 'Movies', icon: Film },
     { id: 'genres', label: 'Genres', icon: LayoutGrid },
+    { id: 'library', label: 'Library', icon: Library },
 ];
 
 interface TopNavProps {
@@ -168,7 +169,9 @@ export default function TopNav({
                 </div>
             </div>
 
-            {/* Mobile tab strip */}
+            {/* Mobile tab strip: icons only on narrow screens — five labelled
+                tabs can't fit a phone width, and the strip's hidden scrollbar
+                makes the cut-off ones look gone. Labels return from sm up. */}
             <nav
                 aria-label="Sections"
                 className="no-scrollbar flex gap-1 overflow-x-auto px-4 pb-2 md:hidden"
@@ -177,17 +180,22 @@ export default function TopNav({
                     <button
                         key={id}
                         type="button"
+                        aria-label={label}
+                        title={label}
                         aria-current={tab === id ? 'page' : undefined}
                         onClick={() => onTabChange(id)}
                         className={cn(
-                            'flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-gold/60',
+                            // Icon-only phones: stretch across the full strip
+                            // width (evenly spaced), labels from sm up go back
+                            // to natural width.
+                            'flex h-9 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-gold/60 sm:flex-none sm:justify-start',
                             tab === id
                                 ? 'bg-gold/15 text-gold'
                                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                         )}
                     >
                         <Icon aria-hidden className="size-4" />
-                        {label}
+                        <span className="hidden sm:inline">{label}</span>
                     </button>
                 ))}
             </nav>

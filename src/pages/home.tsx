@@ -4,6 +4,7 @@ import { Skull, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
 import FeaturedBanner from '@/components/featured-banner';
+import LibraryView from '@/components/library-view';
 import MediaCard from '@/components/media-card';
 import MediaModal from '@/components/media-modal';
 import Pagination from '@/components/pagination';
@@ -20,7 +21,12 @@ import {
     type PageResponse,
 } from '@/api/tmdb';
 import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress';
-import { addFavourite, fetchFavourites, removeFavourite } from '@/api/favourites';
+import {
+    addFavourite,
+    fetchFavourites,
+    removeFavourite,
+    type FavouriteRow,
+} from '@/api/favourites';
 import { cn } from '@/lib/utils';
 import { slugify } from '@/lib/slug';
 import type { StoredUser } from '@/lib/authStorage';
@@ -47,6 +53,7 @@ function favouriteKey(mediaType: string, id: number) {
 
 function headingFor(tab: TabId, query: string, genres: Set<string>) {
     if (query) return `Results for “${query}”`;
+    if (tab === 'library') return 'Library';
     if (tab === 'genres') {
         return genres.size > 0 ? `Genres: ${[...genres].join(' + ')}` : 'Browse genres';
     }
@@ -264,6 +271,13 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     selectedRef.current = selected;
     // Real watch progress feeds the modal bars, keyed mediaType:tmdbId.
     const [progressByTitle, setProgressByTitle] = useState<Map<string, ProgressRow>>(new Map());
+    // Library tab data: the two server lists plus one detail fetch per title.
+    const [libraryLoading, setLibraryLoading] = useState(false);
+    const [libraryError, setLibraryError] = useState(false);
+    const [libraryReloadKey, setLibraryReloadKey] = useState(0);
+    const [libraryProgress, setLibraryProgress] = useState<ProgressRow[]>([]);
+    const [libraryFavourites, setLibraryFavourites] = useState<FavouriteRow[]>([]);
+    const [libraryItems, setLibraryItems] = useState<Map<string, MediaItem>>(new Map());
 
     const trimmed = query.trim();
     const debouncedTrimmed = debouncedQuery.trim();
@@ -328,10 +342,63 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         };
     }, []);
 
+    // The library tab loads its two lists once per activation, then fetches
+    // the detail for every unique title (the TMDB proxy caches those 24 h).
+    useEffect(() => {
+        if (tab !== 'library') return;
+        let cancelled = false;
+        setLibraryLoading(true);
+        setLibraryError(false);
+        Promise.all([fetchProgress(), fetchFavourites()])
+            .then(async ([progress, favourites]) => {
+                const seen = new Set<string>();
+                const ids: { key: string; type: MediaType; id: number }[] = [];
+                for (const row of progress) {
+                    const key = `${row.mediaType}:${row.tmdbId}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        ids.push({ key, type: row.mediaType, id: row.tmdbId });
+                    }
+                }
+                for (const fav of favourites) {
+                    const key = `${fav.mediaType}:${fav.tmdbId}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        ids.push({ key, type: fav.mediaType, id: fav.tmdbId });
+                    }
+                }
+                const details = await Promise.all(
+                    ids.map((entry) => fetchTitleDetail(entry.type, entry.id).catch(() => null)),
+                );
+                if (cancelled) return;
+                const items = new Map<string, MediaItem>();
+                details.forEach((detail, index) => {
+                    if (detail) items.set(ids[index].key, detail);
+                });
+                setLibraryProgress(progress);
+                setLibraryFavourites(favourites);
+                setLibraryItems(items);
+            })
+            .catch(() => {
+                if (!cancelled) setLibraryError(true);
+            })
+            .finally(() => {
+                if (!cancelled) setLibraryLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [tab, libraryReloadKey]);
+
     // The main fetch. Re-runs on any tab/filter/page change; stale responses
     // are dropped by the requestId guard. Under-3-char queries skip it — the
     // "keep typing" hint owns the screen until then.
     useEffect(() => {
+        // The library tab has no browse fetch — its view owns its data.
+        if (tab === 'library' && !debouncedTrimmed) {
+            dispatch({ type: 'request-skipped' });
+            return;
+        }
         if (debouncedTrimmed && debouncedTrimmed.length < MIN_SEARCH_LENGTH) {
             dispatch({ type: 'request-skipped' });
             return;
@@ -370,16 +437,33 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
 
     function toggleFavourite(item: MediaItem) {
         if (!item.mediaType) return;
-        const key = favouriteKey(item.mediaType, item.id);
+        const mediaType = item.mediaType;
+        const key = favouriteKey(mediaType, item.id);
         const isFavourite = favourites.has(key);
         dispatch({ type: 'toggle-favourite', key });
+        // The library's Favourites section renders its own list — sync it
+        // optimistically so a heart click inside the library shows up at once.
+        const previousLibraryFavourites = libraryFavourites;
+        const previousLibraryItems = libraryItems;
+        if (isFavourite) {
+            setLibraryFavourites((list) =>
+                list.filter((fav) => favouriteKey(fav.mediaType, fav.tmdbId) !== key),
+            );
+        } else {
+            setLibraryFavourites((list) => [...list, { tmdbId: item.id, mediaType }]);
+            // The detail is already in hand — park it so the card renders even
+            // if the library's own detail fetch never saw this title.
+            setLibraryItems((map) => new Map(map).set(key, item));
+        }
         // Local-first: the heart flips instantly and the request follows; only
         // a failure reverts the flip and says so. vault:favourites-deep-dive#optimistic-revert
         const request = isFavourite
-            ? removeFavourite(item.id, item.mediaType)
-            : addFavourite(item.id, item.mediaType);
+            ? removeFavourite(item.id, mediaType)
+            : addFavourite(item.id, mediaType);
         request.catch(() => {
             dispatch({ type: 'toggle-favourite', key }); // revert
+            setLibraryFavourites(previousLibraryFavourites);
+            setLibraryItems(previousLibraryItems);
             toast.error(
                 `Could not ${isFavourite ? 'remove' : 'add'} “${item.title ?? 'Untitled'}”`,
             );
@@ -401,12 +485,19 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             next.delete(key);
             return next;
         });
+        // Same optimistic sync as the heart: the library's continue cards
+        // must drop the row without waiting for a refetch.
+        const previousLibraryProgress = libraryProgress;
+        setLibraryProgress((list) =>
+            list.filter((row) => !(row.tmdbId === target.id && row.mediaType === target.mediaType)),
+        );
         clearProgress(target.mediaType, target.id).catch(() => {
             setProgressByTitle((current) => {
                 const next = new Map(current);
                 if (row) next.set(key, row);
                 return next;
             });
+            setLibraryProgress(previousLibraryProgress);
             toast.error('Could not clear progress');
         });
         navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`);
@@ -436,6 +527,32 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             ))}
         </div>
     );
+
+    // Library cards: continue-watching rows (finished ones stay out — they'd
+    // resume at the credits) plus the favourites list, both as MediaItems.
+    const libraryContinueCards: {
+        item: MediaItem;
+        progressPct: number | null;
+        badge: string | null;
+    }[] = [];
+    for (const row of libraryProgress) {
+        const finished =
+            row.durationSeconds != null && row.progressSeconds >= row.durationSeconds * 0.97;
+        if (finished) continue;
+        const item = libraryItems.get(`${row.mediaType}:${row.tmdbId}`);
+        if (!item) continue; // a failed detail fetch just skips the card
+        libraryContinueCards.push({
+            item,
+            progressPct: row.durationSeconds
+                ? Math.round((row.progressSeconds / row.durationSeconds) * 100)
+                : null,
+            badge:
+                row.season != null && row.episode != null ? `S${row.season}E${row.episode}` : null,
+        });
+    }
+    const libraryFavouriteCards = libraryFavourites
+        .map((fav) => libraryItems.get(`${fav.mediaType}:${fav.tmdbId}`))
+        .filter((item): item is MediaItem => item != null);
 
     // The modal's bar: the winning row for the selected title, as a percent.
     const selectedProgressRow =
@@ -557,7 +674,17 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     aria-busy={loading}
                     className={cn('transition-opacity', loading && 'opacity-60')}
                 >
-                    {!searching && trimmed ? (
+                    {tab === 'library' && !trimmed ? (
+                        <LibraryView
+                            loading={libraryLoading}
+                            error={libraryError}
+                            onRetry={() => setLibraryReloadKey((key) => key + 1)}
+                            continueCards={libraryContinueCards}
+                            favouriteCards={libraryFavouriteCards}
+                            onSelect={(picked) => dispatch({ type: 'select', item: picked })}
+                            onBrowse={() => dispatch({ type: 'tab', tab: 'trending' })}
+                        />
+                    ) : !searching && trimmed ? (
                         <p className="py-24 text-center text-base text-muted-foreground">
                             Keep typing — search starts at {MIN_SEARCH_LENGTH} characters.
                         </p>
