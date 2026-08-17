@@ -2,12 +2,12 @@
  * where the user left it. Server-side per-user prefs can replace this
  * wholesale later. */
 
-const KEY = 'tv-pirate:preferred-provider'
+const KEY = 'tv-pirate:preferred-provider';
 
 export function getPreferredProvider(): string | null {
-  return localStorage.getItem(KEY)
+    return localStorage.getItem(KEY);
 }
 
 export function setPreferredProvider(provider: string) {
-  localStorage.setItem(KEY, provider)
+    localStorage.setItem(KEY, provider);
 }

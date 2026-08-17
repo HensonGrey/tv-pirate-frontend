@@ -1,8 +1,8 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-@import "@fontsource-variable/manrope";
-@import "@fontsource-variable/outfit";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/outfit';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -68,7 +68,7 @@
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
     /* Brand accent: pirate gold. Kept dark enough for text contrast in light mode. */
-    --gold: oklch(0.60 0.15 70);
+    --gold: oklch(0.6 0.15 70);
     --gold-foreground: oklch(0.17 0.02 75);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
@@ -126,35 +126,36 @@
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+    * {
+        @apply border-border outline-ring/50;
     }
-  body {
-    @apply bg-background text-foreground;
+    body {
+        @apply bg-background text-foreground;
     }
-  html {
-    @apply font-sans;
+    html {
+        @apply font-sans;
     }
-  /* Tailwind v4 resets buttons to cursor:default — restore the pointer. */
-  button:not(:disabled), [role="button"]:not(:disabled) {
-    cursor: pointer;
+    /* Tailwind v4 resets buttons to cursor:default — restore the pointer. */
+    button:not(:disabled),
+    [role='button']:not(:disabled) {
+        cursor: pointer;
     }
 }
 
 /* Sweep used by loading buttons: a soft highlight slides across instead of a spinner. */
 @keyframes shimmer-sweep {
-  from {
-    transform: translateX(-100%);
+    from {
+        transform: translateX(-100%);
     }
-  to {
-    transform: translateX(100%);
+    to {
+        transform: translateX(100%);
     }
 }
 
 /* Hide scrollbars on horizontal strips (mobile tab bar) while keeping them scrollable. */
 @utility no-scrollbar {
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
     }
 }

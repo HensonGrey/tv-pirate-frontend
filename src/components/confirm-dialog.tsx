@@ -1,27 +1,27 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from 'react';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface ConfirmDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description?: ReactNode
-  /** destructive turns the confirm button red — for delete/deactivate actions. */
-  variant?: 'default' | 'destructive'
-  confirmLabel?: string
-  cancelLabel?: string
-  /** Greys both buttons, blocks clicks and shows a sweep on the confirm button. */
-  loading?: boolean
-  onConfirm: () => void
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    title: string;
+    description?: ReactNode;
+    /** destructive turns the confirm button red — for delete/deactivate actions. */
+    variant?: 'default' | 'destructive';
+    confirmLabel?: string;
+    cancelLabel?: string;
+    /** Greys both buttons, blocks clicks and shows a sweep on the confirm button. */
+    loading?: boolean;
+    onConfirm: () => void;
 }
 
 /**
@@ -30,46 +30,48 @@ interface ConfirmDialogProps {
  * succeeds — on failure the dialog stays open so the user can retry.
  */
 export default function ConfirmDialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  variant = 'default',
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
-  loading = false,
-  onConfirm,
+    open,
+    onOpenChange,
+    title,
+    description,
+    variant = 'default',
+    confirmLabel = 'Confirm',
+    cancelLabel = 'Cancel',
+    loading = false,
+    onConfirm,
 }: ConfirmDialogProps) {
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          {/* Description renders a <p> by default — callers pass block content
+    return (
+        <AlertDialog open={open} onOpenChange={onOpenChange}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>{title}</AlertDialogTitle>
+                    {/* Description renders a <p> by default — callers pass block content
               (divs/paragraphs), which is invalid HTML inside a p. Rendering a
               div keeps the slot and styles but accepts any ReactNode. */}
-          {description && (
-            <AlertDialogDescription render={<div />}>{description}</AlertDialogDescription>
-          )}
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction
-            variant={variant === 'destructive' ? 'destructive' : 'default'}
-            disabled={loading}
-            onClick={onConfirm}
-            className="relative overflow-hidden"
-          >
-            {loading && (
-              <span
-                aria-hidden="true"
-                className="absolute inset-0 -translate-x-full animate-[shimmer-sweep_1.4s_ease-in-out_infinite] bg-linear-to-r from-transparent via-white/30 to-transparent dark:via-black/20"
-              />
-            )}
-            {confirmLabel}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
+                    {description && (
+                        <AlertDialogDescription render={<div />}>
+                            {description}
+                        </AlertDialogDescription>
+                    )}
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
+                    <AlertDialogAction
+                        variant={variant === 'destructive' ? 'destructive' : 'default'}
+                        disabled={loading}
+                        onClick={onConfirm}
+                        className="relative overflow-hidden"
+                    >
+                        {loading && (
+                            <span
+                                aria-hidden="true"
+                                className="absolute inset-0 -translate-x-full animate-[shimmer-sweep_1.4s_ease-in-out_infinite] bg-linear-to-r from-transparent via-white/30 to-transparent dark:via-black/20"
+                            />
+                        )}
+                        {confirmLabel}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    );
 }
