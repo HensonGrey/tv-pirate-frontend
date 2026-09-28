@@ -35,12 +35,17 @@ client.interceptors.response.use(
             original._retried = true;
             try {
                 await refreshSession();
-                return client(original); // the new cookies attach automatically on the retry
-            } catch {
-                // Refresh failed → the session is truly over.
+            } catch (refreshError) {
+                // Only a 401 from the refresh itself ends the session; a 429, 5xx or network blip keeps it. vault:rate-limiting-deep-dive#frontend
+                if (!axios.isAxiosError(refreshError) || refreshError.response?.status !== 401) {
+                    return Promise.reject(refreshError);
+                }
                 clearUser();
                 window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+                return Promise.reject(error);
             }
+            // Not awaited: a failed retry must reach the caller, not be mistaken for a failed refresh.
+            return client(original);
         }
         return Promise.reject(error);
     },

@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { API_BASE, client } from './client';
-import { clearUser, saveUser, type StoredUser } from '@/lib/authStorage';
+import { client } from './client';
+import { clearUser, getUser, saveUser, type StoredUser } from '@/lib/authStorage';
 
 export async function loginAsGuest(): Promise<StoredUser> {
     // The token pair arrives as Set-Cookie headers — nothing sensitive to store.
@@ -9,17 +9,18 @@ export async function loginAsGuest(): Promise<StoredUser> {
     return data;
 }
 
-/** Session probe: plain axios on purpose — a 401 here is an honest "not logged in", not something the silent refresh should recover. */
+/** Session probe through the shared client, so an expired 15-min access cookie gets the silent refresh; only a 401 means "not logged in" — any other failure keeps the cached user. */
 export async function fetchMe(): Promise<StoredUser | null> {
     try {
-        const { data } = await axios.get<StoredUser>(`${API_BASE}/api/me`, {
-            withCredentials: true,
-        });
+        const { data } = await client.get<StoredUser>('/api/me');
         saveUser(data);
         return data;
-    } catch {
-        clearUser();
-        return null;
+    } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+            clearUser();
+            return null;
+        }
+        return getUser();
     }
 }
 
