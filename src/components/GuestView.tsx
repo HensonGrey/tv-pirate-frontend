@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import ConfirmDialog from '@/components/confirm-dialog';
 import ThemeIconButton from '@/components/theme-icon-button';
 import { loginAsGuest } from '@/api/auth';
+import { formatWait, retryAfterMs } from '@/lib/apiError';
 
 /** Official Google "G" mark as inline SVG — no external assets needed. */
 function GoogleIcon() {
@@ -43,7 +44,12 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
             onLoggedIn();
         } catch (error) {
             console.error(error);
-            toast.error('Could not create a guest session. Is the backend running?');
+            const wait = retryAfterMs(error);
+            toast.error(
+                wait === null
+                    ? 'Could not create a guest session. Is the backend running?'
+                    : `Too many new guest sessions from your network. Try again in ${formatWait(wait)}.`,
+            );
         } finally {
             setLoading(false);
         }

@@ -33,6 +33,7 @@ import { fetchProgress, type ProgressRow } from '@/api/progress';
 import { addFavourite, fetchFavourites, removeFavourite } from '@/api/favourites';
 import { parseVtt, type VttCue } from '@/lib/vtt';
 import { getPreferredProvider, setPreferredProvider } from '@/lib/providerPreference';
+import { formatWait, retryAfterMs } from '@/lib/apiError';
 import type { StoredUser } from '@/lib/authStorage';
 
 interface WatchPageProps {
@@ -54,6 +55,28 @@ function pickDefaultSource(sources: StreamSourceDto[]): StreamSourceDto | null {
     const under = numeric.filter((s) => parseInt(s.quality, 10) <= 720);
     if (under.length > 0) return under[under.length - 1];
     return sources[0];
+}
+
+const MAX_AUTO_RETRIES = 3;
+const MAX_AUTO_RETRY_WAIT_MS = 60_000;
+
+/** A 429 re-runs its effect once Retry-After has passed: up to 3 times per selection, and
+ * only for short waits. Returns the wait in ms, or null to give up. vault:rate-limiting-deep-dive#frontend */
+function autoRetryWait(
+    error: unknown,
+    attempts: { selection: string; count: number },
+    selection: string,
+): number | null {
+    if (attempts.selection !== selection) {
+        attempts.selection = selection;
+        attempts.count = 0;
+    }
+    const wait = retryAfterMs(error);
+    if (wait === null || wait > MAX_AUTO_RETRY_WAIT_MS || attempts.count >= MAX_AUTO_RETRIES) {
+        return null;
+    }
+    attempts.count++;
+    return wait;
 }
 
 /** Shared pill styling for season + provider chips — selected is solid gold,
@@ -123,6 +146,11 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     // Live position shared with ProgressTracker: a provider switch remounts
     // the player and continues from here.
     const lastPositionRef = useRef(0);
+    // Bumping these re-runs the resolve / subtitle effect after a 429's wait.
+    const [resolveRetry, setResolveRetry] = useState(0);
+    const [subtitleRetry, setSubtitleRetry] = useState(0);
+    const resolveAttempts = useRef({ selection: '', count: 0 });
+    const subtitleAttempts = useRef({ selection: '', count: 0 });
 
     // The page owns its data (the URL is the only seed): a reload refetches
     // the title, so nothing depends on navigation state surviving.
@@ -245,6 +273,8 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
             return;
         }
         let cancelled = false;
+        let retryTimer: ReturnType<typeof setTimeout> | undefined;
+        const selection = `${provider}|${season}|${episode}`;
         setResolving(true);
         fetchSources(
             provider,
@@ -255,39 +285,65 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         )
             .then((result) => {
                 if (cancelled) return;
+                resolveAttempts.current = { selection, count: 0 };
                 setSources(result);
                 setResolvedCoords(isTv ? { season, episode } : null);
+                setResolving(false);
             })
-            .catch(() => {
+            .catch((error) => {
                 if (cancelled) return;
-                toast.error(`Could not resolve sources from ${provider}`);
-            })
-            .finally(() => {
-                if (!cancelled) setResolving(false);
+                const wait = autoRetryWait(error, resolveAttempts.current, selection);
+                if (wait !== null) {
+                    // One toast id: each retry replaces the last toast instead of stacking.
+                    toast.error(`Too many requests — retrying in ${formatWait(wait)}`, {
+                        id: 'resolve-retry',
+                    });
+                    retryTimer = setTimeout(() => setResolveRetry((n) => n + 1), wait);
+                    return; // the spinner stays until the retry lands
+                }
+                const tooMany = retryAfterMs(error);
+                toast.error(
+                    tooMany === null
+                        ? `Could not resolve sources from ${provider}`
+                        : `Too many requests — try again in ${formatWait(tooMany)}`,
+                    { id: 'resolve-retry' },
+                );
+                setResolving(false);
             });
         return () => {
             cancelled = true;
+            clearTimeout(retryTimer);
         };
-    }, [provider, item, mediaType, tmdbId, isTv, season, episode]);
+    }, [provider, item, mediaType, tmdbId, isTv, season, episode, resolveRetry]);
 
     // Subtitles are an enhancement: one silent fetch per title/episode, and
     // the player just runs caption-less when the lookup misses.
     useEffect(() => {
         if (!item) return;
         let cancelled = false;
+        let retryTimer: ReturnType<typeof setTimeout> | undefined;
+        const selection = `${tmdbId}|${season}|${episode}`;
         setSubtitleCues([]);
         setSubtitleDelay(0); // a new file is a new release — its own offset
         fetchSubtitleTrack(mediaType, tmdbId, isTv ? season : undefined, isTv ? episode : undefined)
             .then((vtt) => {
-                if (!cancelled && vtt) setSubtitleCues(parseVtt(vtt));
+                if (cancelled) return;
+                subtitleAttempts.current = { selection, count: 0 };
+                if (vtt) setSubtitleCues(parseVtt(vtt));
             })
-            .catch(() => {
-                // No captions is a graceful state — never a toast.
+            .catch((error) => {
+                // No captions is a graceful state — never a toast; a 429 retries silently.
+                if (cancelled) return;
+                const wait = autoRetryWait(error, subtitleAttempts.current, selection);
+                if (wait !== null) {
+                    retryTimer = setTimeout(() => setSubtitleRetry((n) => n + 1), wait);
+                }
             });
         return () => {
             cancelled = true;
+            clearTimeout(retryTimer);
         };
-    }, [mediaType, tmdbId, isTv, season, episode, item]);
+    }, [mediaType, tmdbId, isTv, season, episode, item, subtitleRetry]);
 
     function goBack() {
         // Direct URL visits have no in-app history — navigate(-1) would leave the app.
