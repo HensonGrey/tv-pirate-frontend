@@ -2,12 +2,7 @@ import { Skull, WifiOff } from 'lucide-react';
 import MediaCard from '@/components/media-card';
 import { Button } from '@/components/ui/button';
 import type { MediaItem } from '@/api/tmdb';
-
-interface ContinueCard {
-    item: MediaItem;
-    progressPct: number | null;
-    badge: string | null;
-}
+import type { ContinueCard } from '@/lib/libraryCards';
 
 interface LibraryViewProps {
     loading: boolean;
