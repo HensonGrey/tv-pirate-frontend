@@ -24,6 +24,19 @@ function refreshSession(): Promise<void> {
     return refreshPromise;
 }
 
+/** A refused refresh can just mean another tab won the race: both sent the same one-time
+ * refresh cookie and the other tab's went first. Its new cookies are shared, so if the
+ * session probe now works, the session is fine. Only a 401 here means it's really over. */
+async function anotherTabRefreshed(): Promise<boolean> {
+    try {
+        // Plain axios: this probe must not trigger another refresh.
+        await axios.get(`${API_BASE}/api/me`, { withCredentials: true });
+        return true;
+    } catch (probeError) {
+        return !(axios.isAxiosError(probeError) && probeError.response?.status === 401);
+    }
+}
+
 // On 401: refresh once, then retry the original request.
 client.interceptors.response.use(
     (response) => response,
@@ -40,9 +53,11 @@ client.interceptors.response.use(
                 if (!axios.isAxiosError(refreshError) || refreshError.response?.status !== 401) {
                     return Promise.reject(refreshError);
                 }
-                clearUser();
-                window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
-                return Promise.reject(error);
+                if (!(await anotherTabRefreshed())) {
+                    clearUser();
+                    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+                    return Promise.reject(error);
+                }
             }
             // Not awaited: a failed retry must reach the caller, not be mistaken for a failed refresh.
             return client(original);
