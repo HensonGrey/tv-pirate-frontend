@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Skull, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
+import GenreChips from '@/components/genre-chips';
 import LibraryView from '@/components/library-view';
 import MediaRow from '@/components/media-row';
 import MediaSection from '@/components/media-section';
@@ -25,7 +26,7 @@ import {
 } from '@/api/favourites';
 import { cn } from '@/lib/utils';
 import { formatWait, retryAfterMs } from '@/lib/apiError';
-import { slugify } from '@/lib/slug';
+import { watchPath } from '@/lib/watchPath';
 import { searchPath } from '@/lib/searchPath';
 import type { StoredUser } from '@/lib/authStorage';
 
@@ -188,9 +189,6 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
     }
 }
 
-/** The browse home, fed by the TMDB proxy: a movie list and a show list,
- * debounced search. While loading, previous results stay dimmed; the
- * skeleton only shows when there's nothing yet. */
 /** Fold the tab a watch-page nav click hands over via route state, and the
  * search page's ?q=, into the initial browse state (debouncedQuery prefilled
  * so the search fires immediately instead of waiting out the debounce). */
@@ -203,6 +201,9 @@ function initBrowseState(seed: { tab?: TabId; query: string }): BrowseState {
     };
 }
 
+/** The browse home, fed by the TMDB proxy: a movie list and a show list,
+ * debounced search. While loading, previous results stay dimmed; the
+ * skeleton only shows when there's nothing yet. */
 export default function HomePage({ user, onLogout }: HomePageProps) {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -302,7 +303,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                 if (cancelled) return;
                 const map = new Map<string, ProgressRow>();
                 for (const row of rows) {
-                    const key = `${row.mediaType}:${row.tmdbId}`;
+                    const key = favouriteKey(row.mediaType, row.tmdbId);
                     if (!map.has(key)) map.set(key, row);
                 }
                 setProgressByTitle(map);
@@ -428,7 +429,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
      * from S1E1), then jump into the player. Optimistic with a revert. */
     function startOver(target: MediaItem) {
         if (!target.mediaType) return;
-        const key = `${target.mediaType}:${target.id}`;
+        const key = favouriteKey(target.mediaType, target.id);
         const row = progressByTitle.get(key);
         setProgressByTitle((current) => {
             const next = new Map(current);
@@ -450,7 +451,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             setLibraryProgress(previousLibraryProgress);
             toast.error('Could not clear progress');
         });
-        navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`);
+        navigate(watchPath(target.mediaType, target.id, target.title));
     }
 
     const anyItems = lists.some((list) => list.items.length > 0);
@@ -487,7 +488,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         const finished =
             row.durationSeconds != null && row.progressSeconds >= row.durationSeconds * 0.97;
         if (finished) continue;
-        const item = libraryItems.get(`${row.mediaType}:${row.tmdbId}`);
+        const item = libraryItems.get(favouriteKey(row.mediaType, row.tmdbId));
         if (!item) continue; // a failed detail fetch just skips the card
         libraryContinueCards.push({
             item,
@@ -499,13 +500,13 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         });
     }
     const libraryFavouriteCards = libraryFavourites
-        .map((fav) => libraryItems.get(`${fav.mediaType}:${fav.tmdbId}`))
+        .map((fav) => libraryItems.get(favouriteKey(fav.mediaType, fav.tmdbId)))
         .filter((item): item is MediaItem => item != null);
 
     // The modal's bar: the winning row for the selected title, as a percent.
     const selectedProgressRow =
         selected?.mediaType != null
-            ? progressByTitle.get(`${selected.mediaType}:${selected.id}`)
+            ? progressByTitle.get(favouriteKey(selected.mediaType, selected.id))
             : undefined;
     const selectedProgressPct =
         selectedProgressRow?.durationSeconds != null
@@ -544,40 +545,13 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     </div>
                 </div>
 
-                {/* Genre chips on the Browse tab (until a search narrows things).
-            Multi-select: click to toggle, several genres stack up. */}
                 {tab === 'browse' && !searching && (
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            aria-pressed={genres.size === 0}
-                            onClick={() => dispatch({ type: 'clear-genres' })}
-                            className={cn(
-                                'rounded-full border px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
-                                genres.size === 0
-                                    ? 'border-gold bg-gold/15 text-gold'
-                                    : 'text-muted-foreground hover:border-foreground/30 hover:text-foreground',
-                            )}
-                        >
-                            All genres
-                        </button>
-                        {genreList.map((genre) => (
-                            <button
-                                key={genre.name}
-                                type="button"
-                                aria-pressed={genres.has(genre.name)}
-                                onClick={() => dispatch({ type: 'toggle-genre', name: genre.name })}
-                                className={cn(
-                                    'rounded-full border px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
-                                    genres.has(genre.name)
-                                        ? 'border-gold bg-gold/15 text-gold'
-                                        : 'text-muted-foreground hover:border-foreground/30 hover:text-foreground',
-                                )}
-                            >
-                                {genre.name}
-                            </button>
-                        ))}
-                    </div>
+                    <GenreChips
+                        genreList={genreList}
+                        selected={genres}
+                        onToggle={(name) => dispatch({ type: 'toggle-genre', name })}
+                        onClear={() => dispatch({ type: 'clear-genres' })}
+                    />
                 )}
 
                 {/* Content area. Previous results stay visible (dimmed) while a
@@ -663,7 +637,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         if (!target || target.mediaType == null) return;
                         // The route carries the title's identity (id + slug); coordinates
                         // stay in the watch page's own state.
-                        navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`);
+                        navigate(watchPath(target.mediaType, target.id, target.title));
                     }}
                     onStartOver={() => startOver(selectedDetail ?? selected)}
                     onClose={() => dispatch({ type: 'select', item: null })}
