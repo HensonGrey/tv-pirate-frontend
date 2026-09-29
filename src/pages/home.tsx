@@ -28,6 +28,7 @@ import {
     type FavouriteRow,
 } from '@/api/favourites';
 import { cn } from '@/lib/utils';
+import { formatWait, retryAfterMs } from '@/lib/apiError';
 import { slugify } from '@/lib/slug';
 import type { StoredUser } from '@/lib/authStorage';
 
@@ -45,6 +46,59 @@ const MIN_SEARCH_LENGTH = 3;
 const PAGE_SIZE = 20;
 /** Keystrokes are debounced so a fetch fires only when typing pauses. */
 const SEARCH_DEBOUNCE_MS = 350;
+/** Library titles are fetched this many at a time, so a big library can't tie up the server's threads. */
+const LIBRARY_BATCH_SIZE = 6;
+
+interface Library {
+    progress: ProgressRow[];
+    favourites: FavouriteRow[];
+    /** Title details keyed like favouriteKey; a title that failed to load is missing. */
+    items: Map<string, MediaItem>;
+    /** One error per title that failed to load. */
+    failures: unknown[];
+}
+
+/** The Library tab's data: both server lists, then the detail of every title in
+ * them, a batch at a time. Stops fetching once `isCancelled` says so. */
+async function loadLibrary(isCancelled: () => boolean): Promise<Library> {
+    const [progress, favourites] = await Promise.all([fetchProgress(), fetchFavourites()]);
+    const titles = uniqueTitles([...progress, ...favourites]);
+    const items = new Map<string, MediaItem>();
+    const failures: unknown[] = [];
+
+    for (let start = 0; start < titles.length && !isCancelled(); start += LIBRARY_BATCH_SIZE) {
+        const batch = titles.slice(start, start + LIBRARY_BATCH_SIZE);
+        await Promise.all(
+            batch.map(async (title) => {
+                try {
+                    items.set(title.key, await fetchTitleDetail(title.mediaType, title.tmdbId));
+                } catch (error) {
+                    failures.push(error);
+                }
+            }),
+        );
+    }
+    return { progress, favourites, items, failures };
+}
+
+/** Each title once, in first-seen order — a title can be both in progress and a favourite. */
+function uniqueTitles(rows: { mediaType: MediaType; tmdbId: number }[]) {
+    const titles = new Map<string, { key: string; mediaType: MediaType; tmdbId: number }>();
+    for (const { mediaType, tmdbId } of rows) {
+        const key = favouriteKey(mediaType, tmdbId);
+        if (!titles.has(key)) titles.set(key, { key, mediaType, tmdbId });
+    }
+    return [...titles.values()];
+}
+
+/** "Could not load 3 titles in your library", with the wait when the server rate-limited us. */
+function libraryFailureMessage(failures: unknown[]): string {
+    const count = `${failures.length} title${failures.length === 1 ? '' : 's'}`;
+    const wait = failures.map(retryAfterMs).find((ms) => ms !== null);
+    return wait == null
+        ? `Could not load ${count} in your library`
+        : `Could not load ${count} — try again in ${formatWait(wait)}`;
+}
 
 /** Stable key for a title across both id spaces — movie 123 ≠ tv 123. */
 function favouriteKey(mediaType: string, id: number) {
@@ -342,42 +396,22 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         };
     }, []);
 
-    // The library tab loads its two lists once per activation, then fetches
-    // the detail for every unique title (the TMDB proxy caches those 24 h).
+    // The library tab loads once per activation (see loadLibrary).
     useEffect(() => {
         if (tab !== 'library') return;
         let cancelled = false;
         setLibraryLoading(true);
         setLibraryError(false);
-        Promise.all([fetchProgress(), fetchFavourites()])
-            .then(async ([progress, favourites]) => {
-                const seen = new Set<string>();
-                const ids: { key: string; type: MediaType; id: number }[] = [];
-                for (const row of progress) {
-                    const key = `${row.mediaType}:${row.tmdbId}`;
-                    if (!seen.has(key)) {
-                        seen.add(key);
-                        ids.push({ key, type: row.mediaType, id: row.tmdbId });
-                    }
-                }
-                for (const fav of favourites) {
-                    const key = `${fav.mediaType}:${fav.tmdbId}`;
-                    if (!seen.has(key)) {
-                        seen.add(key);
-                        ids.push({ key, type: fav.mediaType, id: fav.tmdbId });
-                    }
-                }
-                const details = await Promise.all(
-                    ids.map((entry) => fetchTitleDetail(entry.type, entry.id).catch(() => null)),
-                );
+        loadLibrary(() => cancelled)
+            .then((library) => {
                 if (cancelled) return;
-                const items = new Map<string, MediaItem>();
-                details.forEach((detail, index) => {
-                    if (detail) items.set(ids[index].key, detail);
-                });
-                setLibraryProgress(progress);
-                setLibraryFavourites(favourites);
-                setLibraryItems(items);
+                setLibraryProgress(library.progress);
+                setLibraryFavourites(library.favourites);
+                setLibraryItems(library.items);
+                // A title that failed used to vanish silently; say so.
+                if (library.failures.length > 0) {
+                    toast.error(libraryFailureMessage(library.failures));
+                }
             })
             .catch(() => {
                 if (!cancelled) setLibraryError(true);
