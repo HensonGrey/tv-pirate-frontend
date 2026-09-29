@@ -14,27 +14,17 @@ import CaptionOverlay from '@/components/caption-overlay';
 import Kicker from '@/components/kicker';
 import ProgressTracker from '@/components/progress-tracker';
 import SubtitleDelayMenu from '@/components/subtitle-delay-menu';
-import { cn } from '@/lib/utils';
-import {
-    fetchSeason,
-    fetchTitleDetail,
-    type MediaItem,
-    type MediaType,
-    type SeasonInfo,
-} from '@/api/tmdb';
-import {
-    absoluteProxyUrl,
-    fetchSources,
-    fetchStreamProviders,
-    type StreamSourceDto,
-} from '@/api/stream';
+import { fetchTitleDetail, type MediaItem, type MediaType } from '@/api/tmdb';
+import { absoluteProxyUrl, fetchSources, type StreamSourceDto } from '@/api/stream';
 import { fetchSubtitleTrack } from '@/api/subtitles';
 import { fetchProgress, type ProgressRow } from '@/api/progress';
 import { parseVtt, type VttCue } from '@/lib/vtt';
-import { getPreferredProvider, setPreferredProvider } from '@/lib/providerPreference';
+import { getPreferredProvider } from '@/lib/providerPreference';
 import { formatWait, retryAfterMs } from '@/lib/apiError';
 import type { StoredUser } from '@/lib/authStorage';
 import ExpandableDescription from './expandable-description';
+import EpisodePanel from './episode-panel';
+import ProviderPicker from './provider-picker';
 import WatchHeader from './watch-header';
 
 interface WatchPageProps {
@@ -80,17 +70,6 @@ function autoRetryWait(
     return wait;
 }
 
-/** Shared pill styling for season + provider chips — selected is solid gold,
- * the rest stay quiet outlines. */
-function chipClasses(selected: boolean) {
-    return cn(
-        'rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
-        selected
-            ? 'border-gold bg-gold font-semibold text-gold-foreground shadow-sm'
-            : 'border-border text-muted-foreground hover:border-gold/50 hover:text-foreground',
-    );
-}
-
 /** Full-screen watch page at /movie/{id-slug} or /tv/{id-slug}. The URL
  * carries only the title's identity — season/episode live in component
  * state (TV defaults to S1E1; saved watch progress seeds them on mount).
@@ -110,7 +89,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     const [item, setItem] = useState<MediaItem | null>(null);
     const [loadError, setLoadError] = useState(false);
 
-    const [providers, setProviders] = useState<string[]>([]);
     const [season, setSeason] = useState(1);
     const [episode, setEpisode] = useState(1);
     // Saved positions for this title — seeds the resume seek and the pickers.
@@ -126,9 +104,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     } | null>(null);
     const [provider, setProvider] = useState<string | null>(getPreferredProvider());
 
-    const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
-    const [episodesLoading, setEpisodesLoading] = useState(false);
-
     const [resolving, setResolving] = useState(false);
     const [sources, setSources] = useState<StreamSourceDto[] | null>(null);
     // Nothing resolves until Play: this holds the selection Play was pressed for, so
@@ -143,9 +118,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     // positive = delay the track. Ticks keep the 0.5s steps float-drift-free.
     const [subtitleDelay, setSubtitleDelay] = useState(0);
 
-    // Monotonic request tokens so a fast season-flip can't deliver stale episodes.
-    const episodeRequestId = useRef(0);
-    const providerRequestId = useRef(0);
     // Live position shared with ProgressTracker: a provider switch remounts
     // the player and continues from here.
     const lastPositionRef = useRef(0);
@@ -208,44 +180,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
             cancelled = true;
         };
     }, [tmdbId, mediaType]);
-
-    // Provider list loads once; the remembered one wins, else the first listed.
-    useEffect(() => {
-        const id = ++providerRequestId.current;
-        fetchStreamProviders()
-            .then((list) => {
-                if (providerRequestId.current !== id) return;
-                setProviders(list);
-                // A remembered provider can vanish from the registry (removed, or a
-                // burned upstream) — fall back to the first listed instead of
-                // resolving a name the backend rejects.
-                setProvider((current) =>
-                    current != null && list.includes(current) ? current : (list[0] ?? null),
-                );
-            })
-            .catch(() => toast.error('Could not load the provider list'));
-    }, []);
-
-    // Season data follows the selected season.
-    useEffect(() => {
-        if (!isTv || !tmdbId) return;
-        const id = ++episodeRequestId.current;
-        setEpisodesLoading(true);
-        fetchSeason(tmdbId, season)
-            .then((info) => {
-                if (episodeRequestId.current !== id) return;
-                setSeasonInfo(info);
-                if (!info.episodes.some((ep) => ep.episodeNumber === episode)) setEpisode(1);
-            })
-            .catch(() => {
-                if (episodeRequestId.current !== id) return;
-                toast.error('Could not load the episode list');
-            })
-            .finally(() => {
-                if (episodeRequestId.current !== id) return;
-                setEpisodesLoading(false);
-            });
-    }, [isTv, tmdbId, season]); // episode intentionally not a dep: changing it must not refetch
 
     // Resolve-on-play: browsing episodes costs no provider calls and no video buffering.
     // Cancelled runs stay silent — that's what keeps a fast chip-flip from spamming toasts.
@@ -328,11 +262,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         };
     }, [mediaType, tmdbId, isTv, season, episode, item, subtitleRetry, playRequested]);
 
-    function selectProvider(next: string) {
-        setProvider(next);
-        setPreferredProvider(next);
-    }
-
     function selectSeason(next: number) {
         setSeason(next);
         setEpisode(1); // a new season starts at its first episode
@@ -349,13 +278,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         lastPositionRef.current = 0;
     }
 
-    const selectedEpisode = isTv
-        ? seasonInfo?.episodes.find((ep) => ep.episodeNumber === episode)
-        : null;
-    const seasonCount = item?.seasons ?? 1;
-    // Description: episode overview first, show overview as the fallback —
-    // movies simply show their own overview.
-    const description = selectedEpisode?.overview ?? item?.overview;
     const activeSource = pickDefaultSource(sources ?? []);
     // The backdrop is wider than the poster — it suits the ambient glow and
     // fills the lg player surface, which is taller than 16:9.
@@ -525,116 +447,28 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                         <div className="flex self-start overflow-hidden rounded-2xl bg-card ring-1 ring-border sm:max-h-[calc(100dvh-210px)] sm:overflow-y-auto">
                             <div className="flex h-full w-full flex-col divide-y divide-border">
                                 {isTv ? (
-                                    <>
-                                        {/* The chips alone pick the season — a poster + name row
-                      above them would just repeat the selector. */}
-                                        <div className="space-y-2 p-4">
-                                            <Kicker>Season</Kicker>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {Array.from(
-                                                    { length: seasonCount },
-                                                    (_, index) => index + 1,
-                                                ).map((number) => (
-                                                    <button
-                                                        key={number}
-                                                        type="button"
-                                                        aria-pressed={season === number}
-                                                        onClick={() => selectSeason(number)}
-                                                        className={chipClasses(season === number)}
-                                                    >
-                                                        S{number}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2 p-4">
-                                            <Kicker>Episodes</Kicker>
-                                            {episodesLoading ? (
-                                                <p className="text-sm text-muted-foreground">
-                                                    Loading episodes…
-                                                </p>
-                                            ) : (
-                                                <div className="grid grid-cols-[repeat(auto-fill,minmax(32px,1fr))] gap-1">
-                                                    {(seasonInfo?.episodes ?? []).map(
-                                                        (ep, index) => (
-                                                            <button
-                                                                key={ep.episodeNumber ?? index}
-                                                                type="button"
-                                                                aria-label={`Episode ${ep.episodeNumber}: ${ep.name ?? 'Untitled'}`}
-                                                                aria-pressed={
-                                                                    episode === ep.episodeNumber
-                                                                }
-                                                                title={ep.name ?? 'Untitled'}
-                                                                onClick={() =>
-                                                                    selectEpisode(
-                                                                        ep.episodeNumber ?? 1,
-                                                                    )
-                                                                }
-                                                                className={cn(
-                                                                    'grid aspect-square place-items-center rounded-lg border text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
-                                                                    episode === ep.episodeNumber
-                                                                        ? 'border-gold bg-gold font-semibold text-gold-foreground shadow-sm'
-                                                                        : 'border-border text-muted-foreground hover:border-gold/50 hover:text-foreground',
-                                                                )}
-                                                            >
-                                                                {ep.episodeNumber}
-                                                            </button>
-                                                        ),
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex flex-col gap-1.5 p-4">
-                                            <Kicker>Now playing</Kicker>
-                                            <h2 className="font-heading text-base font-semibold tracking-tight">
-                                                {selectedEpisode
-                                                    ? `S${season}E${episode} · ${selectedEpisode.name ?? 'Untitled'}`
-                                                    : `Season ${season}`}
-                                                {selectedEpisode?.runtimeMinutes != null && (
-                                                    <span className="ml-2 text-sm font-normal text-muted-foreground">
-                                                        {selectedEpisode.runtimeMinutes} min
-                                                    </span>
-                                                )}
-                                            </h2>
-                                            {description != null && (
-                                                <ExpandableDescription
-                                                    key={description}
-                                                    text={description}
-                                                />
-                                            )}
-                                        </div>
-                                    </>
+                                    <EpisodePanel
+                                        tmdbId={tmdbId}
+                                        seasonCount={item.seasons ?? 1}
+                                        season={season}
+                                        episode={episode}
+                                        showOverview={item.overview}
+                                        onSelectSeason={selectSeason}
+                                        onSelectEpisode={selectEpisode}
+                                    />
                                 ) : (
                                     <div className="flex flex-col gap-1.5 p-4">
                                         <Kicker>About</Kicker>
-                                        {description != null && (
+                                        {item.overview != null && (
                                             <ExpandableDescription
-                                                key={description}
-                                                text={description}
+                                                key={item.overview}
+                                                text={item.overview}
                                             />
                                         )}
                                     </div>
                                 )}
 
-                                {/* Sources follow the provider selection automatically. */}
-                                <div className="space-y-2 p-4">
-                                    <Kicker>Provider</Kicker>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {providers.map((name) => (
-                                            <button
-                                                key={name}
-                                                type="button"
-                                                aria-pressed={provider === name}
-                                                onClick={() => selectProvider(name)}
-                                                className={chipClasses(provider === name)}
-                                            >
-                                                {name}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                <ProviderPicker provider={provider} onChange={setProvider} />
                             </div>
                         </div>
                     </div>
