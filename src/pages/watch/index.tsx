@@ -1,29 +1,16 @@
-import '@vidstack/react/player/styles/default/theme.css';
-import '@vidstack/react/player/styles/default/layouts/video.css';
-import '@vidstack/react/player/styles/default/gestures.css';
-
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { LoaderCircle, Play, WifiOff } from 'lucide-react';
-import { toast } from 'sonner';
-import { MediaPlayer, MediaProvider, Poster } from '@vidstack/react';
-import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/layouts/default';
+import { WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TopNav from '@/components/top-nav';
-import CaptionOverlay from '@/components/caption-overlay';
 import Kicker from '@/components/kicker';
-import ProgressTracker from '@/components/progress-tracker';
-import SubtitleDelayMenu from '@/components/subtitle-delay-menu';
 import { fetchTitleDetail, type MediaItem, type MediaType } from '@/api/tmdb';
-import { absoluteProxyUrl, fetchSources, type StreamSourceDto } from '@/api/stream';
-import { fetchSubtitleTrack } from '@/api/subtitles';
 import { fetchProgress, type ProgressRow } from '@/api/progress';
-import { parseVtt, type VttCue } from '@/lib/vtt';
 import { getPreferredProvider } from '@/lib/providerPreference';
-import { formatWait, retryAfterMs } from '@/lib/apiError';
 import type { StoredUser } from '@/lib/authStorage';
 import ExpandableDescription from './expandable-description';
 import EpisodePanel from './episode-panel';
+import PlayerSection from './player-section';
 import ProviderPicker from './provider-picker';
 import WatchHeader from './watch-header';
 
@@ -35,45 +22,10 @@ interface WatchPageProps {
     onLogout: () => void;
 }
 
-/** Pick the row to play without asking the user: exact 720p wins, else the
- * highest row ≤ 720p, else the lowest row ("auto" rows sort last, so they
- * only win when nothing numeric exists). */
-function pickDefaultSource(sources: StreamSourceDto[]): StreamSourceDto | null {
-    if (sources.length === 0) return null;
-    const numeric = sources.filter((s) => /^\d+p$/.test(s.quality));
-    const exact = numeric.find((s) => s.quality === '720p');
-    if (exact) return exact;
-    const under = numeric.filter((s) => parseInt(s.quality, 10) <= 720);
-    if (under.length > 0) return under[under.length - 1];
-    return sources[0];
-}
-
-const MAX_AUTO_RETRIES = 3;
-const MAX_AUTO_RETRY_WAIT_MS = 60_000;
-
-/** A 429 re-runs its effect once Retry-After has passed: up to 3 times per selection, and
- * only for short waits. Returns the wait in ms, or null to give up. vault:rate-limiting-deep-dive#frontend */
-function autoRetryWait(
-    error: unknown,
-    attempts: { selection: string; count: number },
-    selection: string,
-): number | null {
-    if (attempts.selection !== selection) {
-        attempts.selection = selection;
-        attempts.count = 0;
-    }
-    const wait = retryAfterMs(error);
-    if (wait === null || wait > MAX_AUTO_RETRY_WAIT_MS || attempts.count >= MAX_AUTO_RETRIES) {
-        return null;
-    }
-    attempts.count++;
-    return wait;
-}
-
 /** Full-screen watch page at /movie/{id-slug} or /tv/{id-slug}. The URL
  * carries only the title's identity — season/episode live in component
  * state (TV defaults to S1E1; saved watch progress seeds them on mount).
- * Clicking the video surface starts playback — no play button.
+ * Nothing streams until Play is pressed (see usePlayback).
  * vault:streaming-providers-deep-dive#architecture */
 export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps) {
     const navigate = useNavigate();
@@ -95,37 +47,11 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     const [titleProgress, setTitleProgress] = useState<ProgressRow[]>([]);
     // Seek target for the player's next mount; null = start from zero.
     const [resumeTarget, setResumeTarget] = useState<number | null>(null);
-    // The season/episode the current sources were resolved for. The tracker
-    // renders only while the stream matches the picker, so a heartbeat can
-    // never credit the old stream's position to a newly picked episode.
-    const [resolvedCoords, setResolvedCoords] = useState<{
-        season: number;
-        episode: number;
-    } | null>(null);
     const [provider, setProvider] = useState<string | null>(getPreferredProvider());
-
-    const [resolving, setResolving] = useState(false);
-    const [sources, setSources] = useState<StreamSourceDto[] | null>(null);
-    // Nothing resolves until Play: this holds the selection Play was pressed for, so
-    // picking another episode or provider drops back to the Play button by itself.
-    const [playRequestedFor, setPlayRequestedFor] = useState<string | null>(null);
-    const playSelection = `${tmdbId}|${provider}|${season}|${episode}`;
-    const playRequested = playRequestedFor === playSelection;
-    // Parsed caption cues for the current title/episode (empty = no captions).
-    const [subtitleCues, setSubtitleCues] = useState<VttCue[]>([]);
-    // Manual sync shift in half-second ticks: every sub file is timed to its
-    // own release, so a constant offset against the stream is normal —
-    // positive = delay the track. Ticks keep the 0.5s steps float-drift-free.
-    const [subtitleDelay, setSubtitleDelay] = useState(0);
 
     // Live position shared with ProgressTracker: a provider switch remounts
     // the player and continues from here.
     const lastPositionRef = useRef(0);
-    // Bumping these re-runs the resolve / subtitle effect after a 429's wait.
-    const [resolveRetry, setResolveRetry] = useState(0);
-    const [subtitleRetry, setSubtitleRetry] = useState(0);
-    const resolveAttempts = useRef({ selection: '', count: 0 });
-    const subtitleAttempts = useRef({ selection: '', count: 0 });
 
     // The page owns its data (the URL is the only seed): a reload refetches
     // the title, so nothing depends on navigation state surviving.
@@ -181,87 +107,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         };
     }, [tmdbId, mediaType]);
 
-    // Resolve-on-play: browsing episodes costs no provider calls and no video buffering.
-    // Cancelled runs stay silent — that's what keeps a fast chip-flip from spamming toasts.
-    useEffect(() => {
-        if (!provider || !item || !playRequested) {
-            setSources(null);
-            return;
-        }
-        let cancelled = false;
-        let retryTimer: ReturnType<typeof setTimeout> | undefined;
-        const selection = `${provider}|${season}|${episode}`;
-        setResolving(true);
-        fetchSources(
-            provider,
-            mediaType,
-            tmdbId,
-            isTv ? season : undefined,
-            isTv ? episode : undefined,
-        )
-            .then((result) => {
-                if (cancelled) return;
-                resolveAttempts.current = { selection, count: 0 };
-                setSources(result);
-                setResolvedCoords(isTv ? { season, episode } : null);
-                setResolving(false);
-            })
-            .catch((error) => {
-                if (cancelled) return;
-                const wait = autoRetryWait(error, resolveAttempts.current, selection);
-                if (wait !== null) {
-                    // One toast id: each retry replaces the last toast instead of stacking.
-                    toast.error(`Too many requests — retrying in ${formatWait(wait)}`, {
-                        id: 'resolve-retry',
-                    });
-                    retryTimer = setTimeout(() => setResolveRetry((n) => n + 1), wait);
-                    return; // the spinner stays until the retry lands
-                }
-                const tooMany = retryAfterMs(error);
-                toast.error(
-                    tooMany === null
-                        ? `Could not resolve sources from ${provider}`
-                        : `Too many requests — try again in ${formatWait(tooMany)}`,
-                    { id: 'resolve-retry' },
-                );
-                setResolving(false);
-                setPlayRequestedFor(null); // back to the Play button, so it can be pressed again
-            });
-        return () => {
-            cancelled = true;
-            clearTimeout(retryTimer);
-        };
-    }, [provider, item, mediaType, tmdbId, isTv, season, episode, resolveRetry, playRequested]);
-
-    // Subtitles are an enhancement: one silent fetch per played title/episode, and
-    // the player just runs caption-less when the lookup misses.
-    useEffect(() => {
-        if (!item || !playRequested) return;
-        let cancelled = false;
-        let retryTimer: ReturnType<typeof setTimeout> | undefined;
-        const selection = `${tmdbId}|${season}|${episode}`;
-        setSubtitleCues([]);
-        setSubtitleDelay(0); // a new file is a new release — its own offset
-        fetchSubtitleTrack(mediaType, tmdbId, isTv ? season : undefined, isTv ? episode : undefined)
-            .then((vtt) => {
-                if (cancelled) return;
-                subtitleAttempts.current = { selection, count: 0 };
-                if (vtt) setSubtitleCues(parseVtt(vtt));
-            })
-            .catch((error) => {
-                // No captions is a graceful state — never a toast; a 429 retries silently.
-                if (cancelled) return;
-                const wait = autoRetryWait(error, subtitleAttempts.current, selection);
-                if (wait !== null) {
-                    retryTimer = setTimeout(() => setSubtitleRetry((n) => n + 1), wait);
-                }
-            });
-        return () => {
-            cancelled = true;
-            clearTimeout(retryTimer);
-        };
-    }, [mediaType, tmdbId, isTv, season, episode, item, subtitleRetry, playRequested]);
-
     function selectSeason(next: number) {
         setSeason(next);
         setEpisode(1); // a new season starts at its first episode
@@ -278,9 +123,13 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         lastPositionRef.current = 0;
     }
 
-    const activeSource = pickDefaultSource(sources ?? []);
-    // The backdrop is wider than the poster — it suits the ambient glow and
-    // fills the lg player surface, which is taller than 16:9.
+    const selection = {
+        mediaType,
+        tmdbId,
+        season: isTv ? season : undefined,
+        episode: isTv ? episode : undefined,
+    };
+    // The backdrop is wider than the poster — it suits the ambient glow.
     const playerThumb = item?.backdropUrl ?? item?.posterUrl;
 
     let content: ReactNode;
@@ -320,126 +169,14 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                     <WatchHeader item={item} mediaType={mediaType} />
 
                     <div className="grid gap-5 sm:grid-cols-[1fr_280px] lg:grid-cols-[1fr_360px]">
-                        {/* The player: 16:9 below lg, from lg up it fills a surface pinned
-              to the viewport height so the black box is exactly the panel's
-              size — the video letterboxes inside, the poster covers it all.
-              Poster shows the backdrop until the first click; the layout's
-              own gestures toggle play/pause. */}
-                        <section aria-label="Player" className="relative lg:h-[calc(100dvh-230px)]">
-                            <div className="relative aspect-video overflow-hidden rounded-2xl bg-black shadow-xl shadow-black/20 ring-1 ring-border lg:absolute lg:inset-0 lg:aspect-auto dark:shadow-black/60">
-                                {activeSource ? (
-                                    <MediaPlayer
-                                        // Vidstack doesn't re-init a live player when src changes
-                                        // mid-session (mp4 → hls provider swap stays sourceless) —
-                                        // keying by source remounts it, which also resets the
-                                        // playback position as a source switch should.
-                                        key={activeSource.proxyUrl}
-                                        // Mounted only after Play was pressed, so it starts by itself.
-                                        autoPlay
-                                        className="vds-player size-full"
-                                        src={{
-                                            src: absoluteProxyUrl(activeSource.proxyUrl),
-                                            type:
-                                                activeSource.format === 'hls'
-                                                    ? 'application/x-mpegurl'
-                                                    : 'video/mp4',
-                                        }}
-                                        crossOrigin
-                                        playsInline
-                                        title={`${item.title ?? 'Untitled'}${isTv ? ` · S${season}E${episode}` : ''}`}
-                                    >
-                                        <MediaProvider>
-                                            {playerThumb && (
-                                                <Poster
-                                                    className="vds-poster"
-                                                    src={playerThumb}
-                                                    alt={item.title ?? ''}
-                                                />
-                                            )}
-                                        </MediaProvider>
-                                        {subtitleCues.length > 0 && (
-                                            <CaptionOverlay
-                                                cues={subtitleCues}
-                                                delaySeconds={subtitleDelay / 2}
-                                            />
-                                        )}
-                                        {(!isTv ||
-                                            (resolvedCoords?.season === season &&
-                                                resolvedCoords?.episode === episode)) && (
-                                            <ProgressTracker
-                                                key={isTv ? `s${season}e${episode}` : 'movie'}
-                                                tmdbId={tmdbId}
-                                                mediaType={mediaType}
-                                                season={isTv ? season : undefined}
-                                                episode={isTv ? episode : undefined}
-                                                resumeTarget={resumeTarget}
-                                                onResumeConsumed={() => setResumeTarget(null)}
-                                                lastPositionRef={lastPositionRef}
-                                            />
-                                        )}
-                                        <DefaultVideoLayout
-                                            icons={defaultLayoutIcons}
-                                            slots={
-                                                subtitleCues.length > 0
-                                                    ? {
-                                                          settingsMenuItemsEnd: (
-                                                              <SubtitleDelayMenu
-                                                                  delay={subtitleDelay}
-                                                                  onChange={setSubtitleDelay}
-                                                              />
-                                                          ),
-                                                      }
-                                                    : undefined
-                                            }
-                                        />
-                                    </MediaPlayer>
-                                ) : (
-                                    <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                                        {playerThumb && (
-                                            <img
-                                                src={playerThumb}
-                                                alt=""
-                                                className="absolute inset-0 size-full object-cover opacity-40 blur-sm"
-                                            />
-                                        )}
-                                        {!playRequested ? (
-                                            <button
-                                                type="button"
-                                                disabled={!provider}
-                                                onClick={() => setPlayRequestedFor(playSelection)}
-                                                className="relative flex flex-col items-center gap-3 rounded-2xl p-4 text-foreground transition-colors outline-none hover:text-gold focus-visible:ring-3 focus-visible:ring-gold/60 disabled:opacity-50"
-                                            >
-                                                <Play aria-hidden className="size-14" />
-                                                <span className="text-sm font-medium">
-                                                    {isTv ? `Play S${season}E${episode}` : 'Play'}
-                                                </span>
-                                            </button>
-                                        ) : (
-                                            <>
-                                                {resolving ? (
-                                                    <LoaderCircle
-                                                        aria-hidden
-                                                        className="relative size-12 animate-spin text-gold"
-                                                    />
-                                                ) : (
-                                                    <Play
-                                                        aria-hidden
-                                                        className="relative size-12"
-                                                    />
-                                                )}
-                                                <p className="relative text-sm">
-                                                    {resolving
-                                                        ? 'Resolving sources…'
-                                                        : sources && sources.length === 0
-                                                          ? `No playable sources on ${provider}`
-                                                          : 'Loading…'}
-                                                </p>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </section>
+                        <PlayerSection
+                            item={item}
+                            provider={provider}
+                            selection={selection}
+                            resumeTarget={resumeTarget}
+                            onResumeConsumed={() => setResumeTarget(null)}
+                            lastPositionRef={lastPositionRef}
+                        />
 
                         {/* Picker card: sections split by hairlines; the panel fits its
               content height instead of stretching to the player surface.
