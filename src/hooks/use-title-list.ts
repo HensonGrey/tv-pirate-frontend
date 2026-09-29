@@ -6,11 +6,9 @@ import {
     type MediaItem,
     type MediaType,
 } from '@/api/tmdb';
-import type { TabId } from '@/components/top-nav';
 
 /** What a list shows. `genres` is comma-joined (the wire format); '' = none. */
 export interface ListSource {
-    tab: TabId;
     genres: string;
     query: string;
 }
@@ -37,7 +35,7 @@ const LOAD_MORE_MIN_MS = 1000;
 
 interface ListState {
     key: string;
-    // What is shown (tab + genres, or "search"): a change clears the items; a new query only dims them.
+    // What is shown (genres, or "search"): a change clears the items; a new query only dims them.
     viewKey: string;
     page: number;
     items: MediaItem[];
@@ -116,23 +114,17 @@ function appendNewTitles(loaded: MediaItem[], next: MediaItem[]): MediaItem[] {
     return [...loaded, ...next.filter((item) => !seen.has(item.id))];
 }
 
-/** One page of one type: search wins, then the tab decides. */
-function fetchTitles(type: MediaType, tab: TabId, genres: string, query: string, page: number) {
+/** One page of one type: search wins, then genres; no genres = trending. */
+function fetchTitles(type: MediaType, genres: string, query: string, page: number) {
     if (query) return searchTitles(type, query, page);
-    if (tab === 'trending') return fetchTrending(type, 'day', page);
-    return fetchDiscover(type, tab === 'genres' && genres ? genres.split(',') : [], page);
+    if (!genres) return fetchTrending(type, 'day', page);
+    return fetchDiscover(type, genres.split(','), page);
 }
 
 /** A row's next page: fetchTitles, held to at least LOAD_MORE_MIN_MS. */
-async function fetchMoreTitles(
-    type: MediaType,
-    tab: TabId,
-    genres: string,
-    query: string,
-    page: number,
-) {
+async function fetchMoreTitles(type: MediaType, genres: string, query: string, page: number) {
     const minWait = new Promise((resolve) => setTimeout(resolve, LOAD_MORE_MIN_MS));
-    const [result] = await Promise.all([fetchTitles(type, tab, genres, query, page), minWait]);
+    const [result] = await Promise.all([fetchTitles(type, genres, query, page), minWait]);
     return result;
 }
 
@@ -141,11 +133,10 @@ async function fetchMoreTitles(
 export function useTitleList(type: MediaType, source: ListSource | null): TitleList {
     const active = source != null;
     const query = source?.query ?? '';
-    // A search ignores the tab and genres, so they're neutral here: switching
-    // tabs mid-search mustn't refetch it.
-    const tab = (!query && source?.tab) || 'trending';
+    // A search ignores the genres, so they're neutral here: toggling a chip
+    // mid-search mustn't refetch it.
     const genres = (!query && source?.genres) || '';
-    const viewKey = !active ? 'off' : query ? 'search' : `${tab}|${genres}`;
+    const viewKey = !active ? 'off' : query ? 'search' : `browse|${genres}`;
     const key = `${viewKey}|${query}`;
 
     const [state, dispatch] = useReducer(listReducer, key, (initial) =>
@@ -163,7 +154,7 @@ export function useTitleList(type: MediaType, source: ListSource | null): TitleL
         if (!active) return;
         const more = page > 1;
         dispatch({ type: 'started' });
-        (more ? fetchMoreTitles : fetchTitles)(type, tab, genres, query, page)
+        (more ? fetchMoreTitles : fetchTitles)(type, genres, query, page)
             .then((result) => {
                 if (requestId.current !== id) return;
                 dispatch({
@@ -177,7 +168,7 @@ export function useTitleList(type: MediaType, source: ListSource | null): TitleL
             .catch(() => {
                 if (requestId.current === id) dispatch({ type: 'failed', append: more });
             });
-    }, [active, type, tab, genres, query, page, reloadKey]);
+    }, [active, type, genres, query, page, reloadKey]);
 
     const loadingMore = state.loading && page > 1;
     return {

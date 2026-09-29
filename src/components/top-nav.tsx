@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Clapperboard, Flame, LayoutGrid, Library, LogOut, Search } from 'lucide-react';
+import { Clapperboard, Compass, Library, LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import ConfirmDialog from '@/components/confirm-dialog';
 import ThemeIconButton from '@/components/theme-icon-button';
 import { cn } from '@/lib/utils';
 import type { StoredUser } from '@/lib/authStorage';
 
-export type TabId = 'trending' | 'genres' | 'library';
+export type TabId = 'browse' | 'library';
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
-    { id: 'trending', label: 'Trending', icon: Flame },
-    { id: 'genres', label: 'Genres', icon: LayoutGrid },
+    { id: 'browse', label: 'Browse', icon: Compass },
     { id: 'library', label: 'Library', icon: Library },
 ];
 
@@ -97,10 +104,10 @@ export default function TopNav({
                     wide ? 'max-w-384' : 'max-w-7xl',
                 )}
             >
-                {/* Brand — clicking it always leads home (trending). */}
+                {/* Brand — clicking it always leads home (browse). */}
                 <button
                     type="button"
-                    onClick={() => onTabChange('trending')}
+                    onClick={() => onTabChange('browse')}
                     className="flex items-center gap-2 rounded-lg px-1 py-0.5 outline-none focus-visible:ring-3 focus-visible:ring-gold/60"
                 >
                     <Clapperboard aria-hidden className="size-6 text-gold" />
@@ -142,7 +149,7 @@ export default function TopNav({
 
                 <div className="ml-auto flex items-center gap-1">
                     {/* Desktop search */}
-                    {searchInput(undefined, 'hidden md:block md:w-64 lg:w-96')}
+                    {searchInput(undefined, 'hidden md:block md:w-64 lg:w-96 xl:w-md')}
                     {/* Mobile search toggle */}
                     <button
                         type="button"
@@ -154,27 +161,35 @@ export default function TopNav({
                         <Search className="size-6" />
                     </button>
                     <ThemeIconButton className="size-10 [&_svg]:size-6" />
-                    {/* Account */}
-                    <Avatar className="ml-1 size-10 ring-1 ring-border">
-                        {user.profilePictureUrl && (
-                            <AvatarImage src={user.profilePictureUrl} alt={user.username} />
-                        )}
-                        <AvatarFallback className="text-xs">
-                            {user.username.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                    </Avatar>
-                    <button
-                        type="button"
-                        aria-label="Sign out"
-                        title="Sign out"
-                        onClick={() => (isGuest ? setSignOutOpen(true) : onLogout())}
-                        className={cn(
-                            ICON_BUTTON,
-                            'hover:bg-destructive/10 hover:text-destructive',
-                        )}
-                    >
-                        <LogOut className="size-6" />
-                    </button>
+                    {/* Account: the avatar opens the menu that holds Sign out. */}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger
+                            aria-label="Account menu"
+                            className="ml-1 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-gold/60"
+                        >
+                            <Avatar className="size-10 ring-1 ring-border transition-shadow hover:ring-2 hover:ring-gold/60">
+                                {user.profilePictureUrl && (
+                                    <AvatarImage src={user.profilePictureUrl} alt="" />
+                                )}
+                                <AvatarFallback className="text-sm">
+                                    {user.username.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                            </Avatar>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuLabel>
+                                {isGuest ? 'Guest Profile' : user.username}
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => (isGuest ? setSignOutOpen(true) : onLogout())}
+                            >
+                                <LogOut aria-hidden />
+                                Sign out
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </div>
 

@@ -3,7 +3,6 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Skull, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
-import FeaturedBanner from '@/components/featured-banner';
 import LibraryView from '@/components/library-view';
 import MediaRow from '@/components/media-row';
 import MediaSection from '@/components/media-section';
@@ -102,10 +101,7 @@ function favouriteKey(mediaType: string, id: number) {
 function headingFor(tab: TabId, query: string, genres: Set<string>) {
     if (query) return `Results for “${query}”`;
     if (tab === 'library') return 'Library';
-    if (tab === 'genres') {
-        return genres.size > 0 ? `Genres: ${[...genres].join(' + ')}` : 'Browse genres';
-    }
-    return 'Trending now';
+    return genres.size > 0 ? `Genres: ${[...genres].join(' + ')}` : 'Trending now';
 }
 
 // --- Browse state: the page's inputs (tab, search, genres) and the modal.
@@ -138,7 +134,7 @@ type BrowseAction =
     | { type: 'favourites-loaded'; favourites: Set<string> };
 
 const initialState: BrowseState = {
-    tab: 'trending',
+    tab: 'browse',
     query: '',
     debouncedQuery: '',
     genres: new Set(),
@@ -190,14 +186,6 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
         default:
             return state;
     }
-}
-
-/** The trending banner: the better-rated of the two lists' first titles
- * (each list comes sorted by rating). */
-function bannerPick(movies: MediaItem[], shows: MediaItem[]): MediaItem | undefined {
-    const [movie, show] = [movies[0], shows[0]];
-    if (!movie || !show) return movie ?? show;
-    return (show.rating ?? 0) > (movie.rating ?? 0) ? show : movie;
 }
 
 /** The browse home, fed by the TMDB proxy: a movie list and a show list,
@@ -257,8 +245,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         tooShort || (tab === 'library' && !debouncedTrimmed)
             ? null
             : {
-                  tab,
-                  genres: tab === 'genres' ? [...genres].sort().join() : '',
+                  genres: [...genres].sort().join(),
                   query: debouncedTrimmed,
               };
     const movies = useTitleList('movie', source);
@@ -470,8 +457,6 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     const allFailed = lists.length > 0 && lists.every((list) => list.failed);
     const nothingFound = !anyItems && lists.every((list) => !list.loading && !list.failed);
     const refreshing = lists.some((list) => list.loading);
-    const banner =
-        tab === 'trending' && !searching ? bannerPick(movies.items, shows.items) : undefined;
     // Only a search's totals are real counts; trending and discover report
     // TMDB's page-capped numbers (10,000, 20,001), so the rows count loaded titles.
     const searchTotal = movies.totalResults + shows.totalResults;
@@ -559,21 +544,9 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     </div>
                 </div>
 
-                {banner && (
-                    <FeaturedBanner
-                        item={banner}
-                        onDetails={(picked) => dispatch({ type: 'select', item: picked })}
-                        onWatch={(target) => {
-                            // Same route as the card modal's Continue watching.
-                            if (!target || target.mediaType == null) return;
-                            navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`);
-                        }}
-                    />
-                )}
-
-                {/* Genre chips on the Genres tab (until a search narrows things).
+                {/* Genre chips on the Browse tab (until a search narrows things).
             Multi-select: click to toggle, several genres stack up. */}
-                {tab === 'genres' && !searching && (
+                {tab === 'browse' && !searching && (
                     <div className="flex flex-wrap gap-2">
                         <button
                             type="button"
@@ -621,7 +594,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                             continueCards={libraryContinueCards}
                             favouriteCards={libraryFavouriteCards}
                             onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-                            onBrowse={() => dispatch({ type: 'tab', tab: 'trending' })}
+                            onBrowse={() => dispatch({ type: 'tab', tab: 'browse' })}
                         />
                     ) : !searching && trimmed ? (
                         <p className="py-24 text-center text-base text-muted-foreground">
