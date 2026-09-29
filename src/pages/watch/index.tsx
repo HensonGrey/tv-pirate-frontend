@@ -7,6 +7,7 @@ import Kicker from '@/components/kicker';
 import { fetchTitleDetail, type MediaItem, type MediaType } from '@/api/tmdb';
 import { fetchProgress, type ProgressRow } from '@/api/progress';
 import { getPreferredProvider } from '@/lib/providerPreference';
+import { searchPath } from '@/lib/searchPath';
 import type { StoredUser } from '@/lib/authStorage';
 import ExpandableDescription from './expandable-description';
 import EpisodePanel from './episode-panel';
@@ -35,7 +36,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     const isTv = mediaType === 'tv';
 
     // The nav's search doesn't filter this page — Enter carries the query to
-    // home via route state, where the browse reducer picks it up on mount.
+    // the search page (/search?q=).
     const [query, setQuery] = useState('');
 
     const [item, setItem] = useState<MediaItem | null>(null);
@@ -234,14 +235,16 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                 </div>
             )}
             {/* Same app shell as home: tabs navigate back to the matching section,
-          search runs on Enter with the query riding along in route state. */}
+          search runs on Enter by opening the search page. */}
             <TopNav
                 wide
                 tab={mediaType === 'tv' ? 'shows' : 'movies'}
                 onTabChange={(tab) => navigate('/', { state: { tab } })}
                 query={query}
                 onQueryChange={setQuery}
-                onSubmit={() => navigate('/', { state: { query } })}
+                onSubmit={() => {
+                    if (query.trim()) navigate(searchPath(query.trim()));
+                }}
                 user={user}
                 onLogout={onLogout}
             />

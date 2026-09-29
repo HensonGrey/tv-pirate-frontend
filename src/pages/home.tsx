@@ -1,11 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Skull, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
 import FeaturedBanner from '@/components/featured-banner';
 import LibraryView from '@/components/library-view';
 import MediaCard from '@/components/media-card';
+import MediaSection from '@/components/media-section';
 import MediaModal from '@/components/media-modal';
 import Pagination from '@/components/pagination';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatWait, retryAfterMs } from '@/lib/apiError';
 import { slugify } from '@/lib/slug';
+import { searchPath } from '@/lib/searchPath';
 import type { StoredUser } from '@/lib/authStorage';
 
 interface HomePageProps {
@@ -145,6 +147,7 @@ type BrowseAction =
     | { type: 'tab'; tab: TabId }
     | { type: 'query'; query: string }
     | { type: 'query-debounced'; query: string }
+    | { type: 'query-restored'; query: string }
     | { type: 'type-filter'; typeFilter: TypeFilter }
     | { type: 'toggle-genre'; name: string }
     | { type: 'clear-genres' }
@@ -193,6 +196,14 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
             return { ...state, query: action.query, page: 1 };
         case 'query-debounced':
             return { ...state, debouncedQuery: action.query };
+        case 'query-restored':
+            // The URL names what the box already holds (Enter, or the live
+            // ?q= sync): keep the typed text, trailing space and all, and
+            // just skip the debounce.
+            if (action.query === state.query.trim()) {
+                return { ...state, debouncedQuery: action.query };
+            }
+            return { ...state, query: action.query, debouncedQuery: action.query, page: 1 };
         case 'type-filter':
             return { ...state, typeFilter: action.typeFilter, page: 1 };
         case 'toggle-genre': {
@@ -275,23 +286,27 @@ async function loadPage(
 /** The browse home, fed by the TMDB proxy: one API call per tab, debounced
  * search, pagination from the response. While loading, previous results
  * stay dimmed; the skeleton only shows when there's nothing yet. */
-/** Fold the tab/query a watch-page nav click hands over via route state
- * into the initial browse state (debouncedQuery prefilled so the search
- * fires immediately instead of waiting out the debounce). */
-function initBrowseState(nav: { tab?: TabId; query?: string } | null): BrowseState {
+/** Fold the tab a watch-page nav click hands over via route state, and the
+ * search page's ?q=, into the initial browse state (debouncedQuery prefilled
+ * so the search fires immediately instead of waiting out the debounce). */
+function initBrowseState(seed: { tab?: TabId; query: string }): BrowseState {
     return {
         ...initialState,
-        tab: nav?.tab ?? initialState.tab,
-        query: nav?.query ?? '',
-        debouncedQuery: nav?.query ?? '',
+        tab: seed.tab ?? initialState.tab,
+        query: seed.query,
+        debouncedQuery: seed.query,
     };
 }
 
 export default function HomePage({ user, onLogout }: HomePageProps) {
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
+    // "/" and "/search?q=" both render this page; only the search page has a query in its URL.
+    const isSearchPage = location.pathname === '/search';
+    const urlQuery = isSearchPage ? (searchParams.get('q') ?? '').trim() : '';
     const [state, dispatch] = useReducer(
         browseReducer,
-        (location.state as { tab?: TabId; query?: string } | null) ?? null,
+        { tab: (location.state as { tab?: TabId } | null)?.tab, query: urlQuery },
         initBrowseState,
     );
     const navigate = useNavigate();
@@ -346,6 +361,24 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         );
         return () => clearTimeout(timer);
     }, [trimmed]);
+
+    // URL → box: back/forward between searches (or back to "/") shows the
+    // query that history entry was for.
+    useEffect(() => {
+        dispatch({ type: 'query-restored', query: urlQuery });
+    }, [urlQuery]);
+
+    // Box → URL: on the search page, live typing keeps ?q= current (replace,
+    // not push), so coming back from a title lands on the latest search; an
+    // emptied box leaves for home. Runs on debouncedTrimmed only: on
+    // back/forward the URL changes first, and the stale box must not win.
+    useEffect(() => {
+        if (!isSearchPage) return;
+        if (!debouncedTrimmed) navigate('/', { replace: true });
+        else if (debouncedTrimmed !== urlQuery) {
+            setSearchParams({ q: debouncedTrimmed }, { replace: true });
+        }
+    }, [debouncedTrimmed]);
 
     // Genre chips load once per session; the backend caches the table 24 h.
     useEffect(() => {
@@ -469,6 +502,13 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             });
     }, [selected]);
 
+    /** Enter / the search icon: a search becomes its own history entry. On the
+     * search page it replaces instead, so back doesn't step through every edit. */
+    function submitSearch() {
+        if (trimmed.length < MIN_SEARCH_LENGTH) return;
+        navigate(searchPath(trimmed), { replace: isSearchPage });
+    }
+
     function toggleFavourite(item: MediaItem) {
         if (!item.mediaType) return;
         const mediaType = item.mediaType;
@@ -562,6 +602,27 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         </div>
     );
 
+    // The boxed Movies/Shows halves of a mixed page: one row that scrolls
+    // sideways, so neither half pushes the other off screen. The padding keeps
+    // the hover ring and focus ring inside the scroll box's clip. Each cell is a
+    // one-column grid so the card (a button) fills it, and minmax(0) so a long
+    // title truncates instead of widening its card — and with it the poster.
+    const mediaRow = (rowItems: MediaItem[]) => (
+        <div className="-mx-1 mt-3 flex snap-x gap-4 overflow-x-auto px-1 pt-1 pb-3 scrollbar-row">
+            {rowItems.map((item) => (
+                <div
+                    key={item.id}
+                    className="grid w-36 shrink-0 grid-cols-1 snap-start sm:w-40 xl:w-44"
+                >
+                    <MediaCard
+                        item={item}
+                        onSelect={(picked) => dispatch({ type: 'select', item: picked })}
+                    />
+                </div>
+            ))}
+        </div>
+    );
+
     // Library cards: continue-watching rows (finished ones stay out — they'd
     // resume at the credits) plus the favourites list, both as MediaItems.
     const libraryContinueCards: {
@@ -604,9 +665,14 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         <div className="min-h-dvh">
             <TopNav
                 tab={tab}
-                onTabChange={(next) => dispatch({ type: 'tab', tab: next })}
+                onTabChange={(next) => {
+                    dispatch({ type: 'tab', tab: next });
+                    // A tab leaves the search page — its query clears with the URL.
+                    if (isSearchPage) navigate('/');
+                }}
                 query={query}
                 onQueryChange={(next) => dispatch({ type: 'query', query: next })}
+                onSubmit={submitSearch}
                 user={user}
                 onLogout={onLogout}
             />
@@ -771,32 +837,14 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                             </Button>
                         </div>
                     ) : typeFilter === 'all' ? (
-                        <>
-                            <section aria-label="Movies">
-                                <h3 className="font-heading text-base font-semibold tracking-tight">
-                                    Movies
-                                </h3>
-                                {pageMovies.length ? (
-                                    mediaGrid(pageMovies)
-                                ) : (
-                                    <p className="mt-3 text-sm text-muted-foreground">
-                                        No movies on this page — try the next one.
-                                    </p>
-                                )}
-                            </section>
-                            <section aria-label="Shows">
-                                <h3 className="font-heading text-base font-semibold tracking-tight">
-                                    Shows
-                                </h3>
-                                {pageShows.length ? (
-                                    mediaGrid(pageShows)
-                                ) : (
-                                    <p className="mt-3 text-sm text-muted-foreground">
-                                        No shows on this page — try the next one.
-                                    </p>
-                                )}
-                            </section>
-                        </>
+                        <div className="space-y-6">
+                            <MediaSection mediaType="movie" count={pageMovies.length}>
+                                {mediaRow(pageMovies)}
+                            </MediaSection>
+                            <MediaSection mediaType="tv" count={pageShows.length}>
+                                {mediaRow(pageShows)}
+                            </MediaSection>
+                        </div>
                     ) : (
                         mediaGrid(visibleItems)
                     )}

@@ -24,9 +24,8 @@ interface TopNavProps {
     onTabChange: (tab: TabId) => void;
     query: string;
     onQueryChange: (query: string) => void;
-    /** Optional Enter handler — pages that aren't searchable (e.g. watch)
-     *  use it to carry the query elsewhere instead of searching live. */
-    onSubmit?: () => void;
+    /** Enter or the search icon: opens the search page for the query. */
+    onSubmit: () => void;
     /** Watch pages render a wider content column than home — the nav follows
      *  it so the edges stay aligned. */
     wide?: boolean;
@@ -65,10 +64,6 @@ export default function TopNav({
 
     const searchInput = (inputRef: Ref<HTMLInputElement> | undefined, className: string) => (
         <div className={cn('relative', className)}>
-            <Search
-                aria-hidden
-                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            />
             <Input
                 ref={inputRef}
                 type="search"
@@ -76,12 +71,22 @@ export default function TopNav({
                 onChange={(event) => onQueryChange(event.target.value)}
                 onKeyDown={(event) => {
                     if (event.key === 'Escape') setMobileSearchOpen(false);
-                    if (event.key === 'Enter') onSubmit?.();
+                    if (event.key === 'Enter') onSubmit();
                 }}
                 placeholder="Search movies & shows"
                 aria-label="Search movies and shows"
-                className="h-9 w-full pl-8"
+                className="h-9 w-full pl-9"
             />
+            {/* After the input so it paints on top of it. */}
+            <button
+                type="button"
+                aria-label="Submit search"
+                title="Search"
+                onClick={onSubmit}
+                className="absolute top-1/2 left-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-gold/60"
+            >
+                <Search aria-hidden className="size-4" />
+            </button>
         </div>
     );
 

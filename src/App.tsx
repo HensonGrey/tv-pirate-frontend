@@ -61,6 +61,11 @@ function App() {
                             path="/"
                             element={<HomePage user={user!} onLogout={handleLogout} />}
                         />
+                        {/* The same browse page, seeded by ?q= — see HomePage. */}
+                        <Route
+                            path="/search"
+                            element={<HomePage user={user!} onLogout={handleLogout} />}
+                        />
                         {/* Watch routes carry the title's identity only; season/episode
                 stay in component state (server progress will own them).
                 The watch page renders the same app shell as home. */}

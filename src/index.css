@@ -28,6 +28,8 @@
     --color-destructive: var(--destructive);
     --color-gold: var(--gold);
     --color-gold-foreground: var(--gold-foreground);
+    --color-movie: var(--movie);
+    --color-show: var(--show);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -70,6 +72,10 @@
     /* Brand accent: pirate gold. Kept dark enough for text contrast in light mode. */
     --gold: oklch(0.6 0.15 70);
     --gold-foreground: oklch(0.17 0.02 75);
+    /* Media-type accents: tell the Movies and Shows sections apart. Not gold —
+       gold already means "selected". */
+    --movie: oklch(0.52 0.19 300);
+    --show: oklch(0.52 0.13 230);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
@@ -107,6 +113,8 @@
     --destructive: oklch(0.704 0.191 22.216);
     --gold: oklch(0.84 0.15 85);
     --gold-foreground: oklch(0.18 0.03 70);
+    --movie: oklch(0.74 0.15 300);
+    --show: oklch(0.76 0.12 230);
     --border: oklch(1 0 0 / 12%);
     --input: oklch(1 0 0 / 18%);
     --ring: oklch(0.556 0 0);
@@ -149,6 +157,31 @@
     }
     to {
         transform: translateX(100%);
+    }
+}
+
+/* Sideways card rows: a slim pill in the row's accent (--row-accent, set by
+   the section) on a faint track of the same hue. Chromium/Safari get the
+   rounded pill; Firefox only supports colours, so it gets thin + tinted. */
+@utility scrollbar-row {
+    &::-webkit-scrollbar {
+        height: 6px;
+    }
+    &::-webkit-scrollbar-track {
+        border-radius: 9999px;
+        background: color-mix(in oklch, var(--row-accent, var(--gold)) 12%, transparent);
+    }
+    &::-webkit-scrollbar-thumb {
+        border-radius: 9999px;
+        background: color-mix(in oklch, var(--row-accent, var(--gold)) 60%, transparent);
+    }
+    &::-webkit-scrollbar-thumb:hover {
+        background: var(--row-accent, var(--gold));
+    }
+    @supports not selector(::-webkit-scrollbar) {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in oklch, var(--row-accent, var(--gold)) 60%, transparent)
+            transparent;
     }
 }
 
