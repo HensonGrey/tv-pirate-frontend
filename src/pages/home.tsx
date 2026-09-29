@@ -1,14 +1,11 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
-import { Skull, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
+import BrowseResults from '@/components/browse-results';
 import GenreChips from '@/components/genre-chips';
 import LibraryView from '@/components/library-view';
-import MediaRow from '@/components/media-row';
-import MediaSection from '@/components/media-section';
 import MediaModal from '@/components/media-modal';
-import { Button } from '@/components/ui/button';
 import {
     fetchGenres,
     fetchTitleDetail,
@@ -16,7 +13,7 @@ import {
     type MediaItem,
     type MediaType,
 } from '@/api/tmdb';
-import { useTitleList, type TitleList } from '@/hooks/use-title-list';
+import { useTitleList } from '@/hooks/use-title-list';
 import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress';
 import {
     addFavourite,
@@ -24,7 +21,6 @@ import {
     removeFavourite,
     type FavouriteRow,
 } from '@/api/favourites';
-import { cn } from '@/lib/utils';
 import { formatWait, retryAfterMs } from '@/lib/apiError';
 import { watchPath } from '@/lib/watchPath';
 import { searchPath } from '@/lib/searchPath';
@@ -251,7 +247,6 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
               };
     const movies = useTitleList('movie', source);
     const shows = useTitleList('tv', source);
-    const lists = source ? [movies, shows] : [];
 
     // Debounce the search box: the fetch reads debouncedTrimmed, so it only
     // fires once the user pauses.
@@ -454,28 +449,9 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         navigate(watchPath(target.mediaType, target.id, target.title));
     }
 
-    const anyItems = lists.some((list) => list.items.length > 0);
-    const allFailed = lists.length > 0 && lists.every((list) => list.failed);
-    const nothingFound = !anyItems && lists.every((list) => !list.loading && !list.failed);
-    const refreshing = lists.some((list) => list.loading);
     // Only a search's totals are real counts; trending and discover report
     // TMDB's page-capped numbers (10,000, 20,001), so the rows count loaded titles.
     const searchTotal = movies.totalResults + shows.totalResults;
-
-    const section = (mediaType: MediaType, list: TitleList) => (
-        <MediaSection
-            mediaType={mediaType}
-            count={list.items.length}
-            empty={list.items.length === 0 && !list.loading && !list.failed}
-        >
-            {/* The key remounts the row for a new result set, so it starts scrolled left. */}
-            <MediaRow
-                key={`${tab}|${[...genres].join()}|${debouncedTrimmed}`}
-                list={list}
-                onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-            />
-        </MediaSection>
-    );
 
     // Library cards: continue-watching rows (finished ones stay out — they'd
     // resume at the credits) plus the favourites list, both as MediaItems.
@@ -554,69 +530,35 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     />
                 )}
 
-                {/* Content area. Previous results stay visible (dimmed) while a
-            refetch runs; an empty row shows placeholder cards instead. */}
-                <div
-                    aria-busy={refreshing}
-                    className={cn('transition-opacity', refreshing && anyItems && 'opacity-60')}
-                >
-                    {tab === 'library' && !trimmed ? (
-                        <LibraryView
-                            loading={libraryLoading}
-                            error={libraryError}
-                            onRetry={() => setLibraryReloadKey((key) => key + 1)}
-                            continueCards={libraryContinueCards}
-                            favouriteCards={libraryFavouriteCards}
-                            onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-                            onBrowse={() => dispatch({ type: 'tab', tab: 'browse' })}
-                        />
-                    ) : !searching && trimmed ? (
-                        <p className="py-24 text-center text-base text-muted-foreground">
-                            Keep typing — search starts at {MIN_SEARCH_LENGTH} characters.
-                        </p>
-                    ) : allFailed ? (
-                        <div className="flex flex-col items-center gap-3 py-24 text-center">
-                            <WifiOff aria-hidden className="size-10 text-muted-foreground" />
-                            <p className="font-heading text-lg font-semibold">
-                                Shore leave — the signal's down
-                            </p>
-                            <p className="max-w-sm text-base text-muted-foreground">
-                                Couldn't load titles. The server may be busy — try again in a
-                                moment.
-                            </p>
-                            <Button
-                                variant="outline"
-                                onClick={() => lists.forEach((list) => list.retry())}
-                            >
-                                Try again
-                            </Button>
-                        </div>
-                    ) : nothingFound ? (
-                        <div className="flex flex-col items-center gap-3 py-24 text-center">
-                            <Skull aria-hidden className="size-10 text-muted-foreground" />
-                            <p className="font-heading text-lg font-semibold">No treasure found</p>
-                            <p className="max-w-sm text-base text-muted-foreground">
-                                {searching
-                                    ? `Nothing matches “${trimmed}”. Try a different title, or clear the filters.`
-                                    : 'Nothing matches these filters. Loosen them up and cast another net.'}
-                            </p>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    dispatch({ type: 'query', query: '' });
-                                    dispatch({ type: 'clear-genres' });
-                                }}
-                            >
-                                Clear filters
-                            </Button>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {section('tv', shows)}
-                            {section('movie', movies)}
-                        </div>
-                    )}
-                </div>
+                {tab === 'library' && !trimmed ? (
+                    <LibraryView
+                        loading={libraryLoading}
+                        error={libraryError}
+                        onRetry={() => setLibraryReloadKey((key) => key + 1)}
+                        continueCards={libraryContinueCards}
+                        favouriteCards={libraryFavouriteCards}
+                        onSelect={(picked) => dispatch({ type: 'select', item: picked })}
+                        onBrowse={() => dispatch({ type: 'tab', tab: 'browse' })}
+                    />
+                ) : !searching && trimmed ? (
+                    <p className="py-24 text-center text-base text-muted-foreground">
+                        Keep typing — search starts at {MIN_SEARCH_LENGTH} characters.
+                    </p>
+                ) : (
+                    <BrowseResults
+                        movies={movies}
+                        shows={shows}
+                        idle={source === null}
+                        searching={searching}
+                        query={trimmed}
+                        resetKey={`${tab}|${[...genres].join()}|${debouncedTrimmed}`}
+                        onSelect={(picked) => dispatch({ type: 'select', item: picked })}
+                        onClearFilters={() => {
+                            dispatch({ type: 'query', query: '' });
+                            dispatch({ type: 'clear-genres' });
+                        }}
+                    />
+                )}
             </main>
 
             {selected && (
