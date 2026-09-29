@@ -4,7 +4,7 @@ import '@vidstack/react/player/styles/default/gestures.css';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Film, Heart, LoaderCircle, Play, Star, Tv, WifiOff } from 'lucide-react';
+import { LoaderCircle, Play, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { MediaPlayer, MediaProvider, Poster } from '@vidstack/react';
 import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/layouts/default';
@@ -30,11 +30,12 @@ import {
 } from '@/api/stream';
 import { fetchSubtitleTrack } from '@/api/subtitles';
 import { fetchProgress, type ProgressRow } from '@/api/progress';
-import { addFavourite, fetchFavourites, removeFavourite } from '@/api/favourites';
 import { parseVtt, type VttCue } from '@/lib/vtt';
 import { getPreferredProvider, setPreferredProvider } from '@/lib/providerPreference';
 import { formatWait, retryAfterMs } from '@/lib/apiError';
 import type { StoredUser } from '@/lib/authStorage';
+import ExpandableDescription from './expandable-description';
+import WatchHeader from './watch-header';
 
 interface WatchPageProps {
     /** Fixed by the route (/movie/:id vs /tv/:id) — never part of query state. */
@@ -124,9 +125,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         episode: number;
     } | null>(null);
     const [provider, setProvider] = useState<string | null>(getPreferredProvider());
-    // Seeded from the shared favourites list on mount, so the heart survives
-    // reloads and matches home. vault:favourites-deep-dive#schema
-    const [isFavourite, setIsFavourite] = useState(false);
 
     const [seasonInfo, setSeasonInfo] = useState<SeasonInfo | null>(null);
     const [episodesLoading, setEpisodesLoading] = useState(false);
@@ -205,26 +203,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
             })
             .catch(() => {
                 // Progress is an enhancement — no row, no resume, no toast.
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [tmdbId, mediaType]);
-
-    // The heart's initial state comes from the shared favourites list — the
-    // same GET home reads, so both pages stay in sync.
-    useEffect(() => {
-        if (!tmdbId) return;
-        let cancelled = false;
-        fetchFavourites()
-            .then((rows) => {
-                if (cancelled) return;
-                setIsFavourite(
-                    rows.some((row) => row.tmdbId === tmdbId && row.mediaType === mediaType),
-                );
-            })
-            .catch(() => {
-                // No list is a graceful state — the heart reads as unliked.
             });
         return () => {
             cancelled = true;
@@ -350,31 +328,9 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         };
     }, [mediaType, tmdbId, isTv, season, episode, item, subtitleRetry, playRequested]);
 
-    function goBack() {
-        // Direct URL visits have no in-app history — navigate(-1) would leave the app.
-        if (window.history.state?.idx) navigate(-1);
-        else navigate('/');
-    }
-
     function selectProvider(next: string) {
         setProvider(next);
         setPreferredProvider(next);
-    }
-
-    function toggleFavourite() {
-        const wasFavourite = isFavourite;
-        setIsFavourite(!wasFavourite);
-        // Local-first: the heart flips instantly and the request follows; only
-        // a failure reverts the flip. vault:favourites-deep-dive#optimistic-revert
-        const request = wasFavourite
-            ? removeFavourite(tmdbId, mediaType)
-            : addFavourite(tmdbId, mediaType);
-        request.catch(() => {
-            setIsFavourite(wasFavourite);
-            toast.error(
-                wasFavourite ? 'Could not remove from favourites' : 'Could not add to favourites',
-            );
-        });
     }
 
     function selectSeason(next: number) {
@@ -400,46 +356,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     // Description: episode overview first, show overview as the fallback —
     // movies simply show their own overview.
     const description = selectedEpisode?.overview ?? item?.overview;
-
-    // The description shows a few lines by default and fades out when clipped;
-    // clicking it (or the hint) animates the block open to its full height —
-    // the panel then scrolls internally. The block never stretches to fill
-    // empty panel space; sections stack at the top of the card.
-    const [descExpanded, setDescExpanded] = useState(false);
-    // Full text height in px, measured once when expanding so max-height can
-    // transition to the real size instead of an arbitrary cap.
-    const [descMaxH, setDescMaxH] = useState(0);
-    const [descOverflows, setDescOverflows] = useState(false);
-    const descRef = useRef<HTMLParagraphElement>(null);
-
-    function toggleDescription() {
-        if (!descExpanded) {
-            // scrollHeight reports the full text even while the block is clamped.
-            setDescMaxH(descRef.current?.scrollHeight ?? 600);
-        }
-        setDescExpanded((v) => !v);
-    }
-
-    // A new title/episode starts with the description collapsed again.
-    useEffect(() => {
-        setDescExpanded(false);
-        setDescMaxH(0);
-    }, [description]);
-
-    // Keeps the expanded block sized to its content on resize, and tells the
-    // hint whether the collapsed view is actually clipping text.
-    useEffect(() => {
-        const el = descRef.current;
-        if (!el) return;
-        const check = () => {
-            if (descExpanded) setDescMaxH(el.scrollHeight);
-            setDescOverflows(el.scrollHeight > el.clientHeight + 4);
-        };
-        check();
-        const observer = new ResizeObserver(check);
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, [description, descExpanded]);
     const activeSource = pickDefaultSource(sources ?? []);
     // The backdrop is wider than the poster — it suits the ambient glow and
     // fills the lg player surface, which is taller than 16:9.
@@ -479,79 +395,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
           window allows; the column is wider than home's and the nav follows
           via its wide prop. Phones stack the card below and scroll. */}
                 <main className="relative mx-auto flex w-full max-w-[min(96rem,calc(44dvh*16/9+32px))] flex-col px-4 py-2 sm:max-w-[min(96rem,calc((100dvh-210px)*16/9+348px))] sm:px-6 lg:max-w-[min(96rem,calc((100dvh-230px)*16/9+444px))] lg:px-8">
-                    {/* Header above the player: back, title + meta, heart. */}
-                    <header className="flex items-center gap-3 py-3 sm:py-4">
-                        <button
-                            type="button"
-                            aria-label="Back to browsing"
-                            onClick={goBack}
-                            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-background/60 text-muted-foreground backdrop-blur transition-colors outline-none hover:border-gold/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-gold/60"
-                        >
-                            <ArrowLeft className="size-5" />
-                        </button>
-                        <div className="min-w-0 flex-1">
-                            <h1 className="font-heading truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                                {item.title ?? 'Untitled'}
-                            </h1>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
-                                <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-xs font-semibold text-gold">
-                                    {isTv ? (
-                                        <>
-                                            <Tv aria-hidden className="size-3" />
-                                            Series
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Film aria-hidden className="size-3" />
-                                            Movie
-                                        </>
-                                    )}
-                                </span>
-                                {item.year != null && (
-                                    <span>
-                                        {item.year}
-                                        {isTv &&
-                                            ` · ${seasonCount} season${seasonCount === 1 ? '' : 's'}`}
-                                    </span>
-                                )}
-                                {item.rating != null && (
-                                    <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                                        <Star
-                                            aria-hidden
-                                            className="size-3.5 fill-gold text-gold"
-                                        />
-                                        {item.rating.toFixed(1)}
-                                    </span>
-                                )}
-                                {item.genres.length > 0 && (
-                                    <span className="hidden truncate md:inline">
-                                        {item.genres.join(' · ')}
-                                    </span>
-                                )}
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            aria-label={
-                                isFavourite ? 'Remove from favourites' : 'Add to favourites'
-                            }
-                            aria-pressed={isFavourite}
-                            onClick={toggleFavourite}
-                            className={cn(
-                                'flex size-11 shrink-0 items-center justify-center rounded-full border shadow-sm backdrop-blur transition-all outline-none focus-visible:ring-2 focus-visible:ring-gold/60',
-                                isFavourite
-                                    ? 'border-gold bg-gold text-gold-foreground shadow-md'
-                                    : 'border-gold bg-gold/10 text-gold hover:bg-gold/20 hover:shadow-md',
-                            )}
-                        >
-                            <Heart
-                                className={cn(
-                                    'size-6 transition-transform active:scale-90',
-                                    isFavourite && 'fill-gold-foreground',
-                                )}
-                            />
-                        </button>
-                    </header>
+                    <WatchHeader item={item} mediaType={mediaType} />
 
                     <div className="grid gap-5 sm:grid-cols-[1fr_280px] lg:grid-cols-[1fr_360px]">
                         {/* The player: 16:9 below lg, from lg up it fills a surface pinned
@@ -755,36 +599,10 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                                                 )}
                                             </h2>
                                             {description != null && (
-                                                <>
-                                                    <p
-                                                        ref={descRef}
-                                                        onClick={toggleDescription}
-                                                        style={
-                                                            descExpanded
-                                                                ? { maxHeight: descMaxH }
-                                                                : undefined
-                                                        }
-                                                        className={cn(
-                                                            'max-h-19.5 cursor-pointer overflow-hidden text-base leading-relaxed text-muted-foreground transition-[max-height] duration-300 ease-out',
-                                                            !descExpanded &&
-                                                                'mask-[linear-gradient(to_bottom,black_calc(100%-28px),transparent)]',
-                                                        )}
-                                                    >
-                                                        {description}
-                                                    </p>
-                                                    {(descOverflows || descExpanded) && (
-                                                        <button
-                                                            type="button"
-                                                            aria-expanded={descExpanded}
-                                                            onClick={toggleDescription}
-                                                            className="self-start text-xs font-semibold text-gold transition-colors outline-none hover:underline focus-visible:ring-2 focus-visible:ring-gold/60"
-                                                        >
-                                                            {descExpanded
-                                                                ? 'Show less'
-                                                                : 'Read more'}
-                                                        </button>
-                                                    )}
-                                                </>
+                                                <ExpandableDescription
+                                                    key={description}
+                                                    text={description}
+                                                />
                                             )}
                                         </div>
                                     </>
@@ -792,34 +610,10 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                                     <div className="flex flex-col gap-1.5 p-4">
                                         <Kicker>About</Kicker>
                                         {description != null && (
-                                            <>
-                                                <p
-                                                    ref={descRef}
-                                                    onClick={toggleDescription}
-                                                    style={
-                                                        descExpanded
-                                                            ? { maxHeight: descMaxH }
-                                                            : undefined
-                                                    }
-                                                    className={cn(
-                                                        'max-h-19.5 cursor-pointer overflow-hidden text-base leading-relaxed text-muted-foreground transition-[max-height] duration-300 ease-out',
-                                                        !descExpanded &&
-                                                            'mask-[linear-gradient(to_bottom,black_calc(100%-28px),transparent)]',
-                                                    )}
-                                                >
-                                                    {description}
-                                                </p>
-                                                {(descOverflows || descExpanded) && (
-                                                    <button
-                                                        type="button"
-                                                        aria-expanded={descExpanded}
-                                                        onClick={toggleDescription}
-                                                        className="self-start text-xs font-semibold text-gold transition-colors outline-none hover:underline focus-visible:ring-2 focus-visible:ring-gold/60"
-                                                    >
-                                                        {descExpanded ? 'Show less' : 'Read more'}
-                                                    </button>
-                                                )}
-                                            </>
+                                            <ExpandableDescription
+                                                key={description}
+                                                text={description}
+                                            />
                                         )}
                                     </div>
                                 )}
