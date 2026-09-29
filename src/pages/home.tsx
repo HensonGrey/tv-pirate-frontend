@@ -5,7 +5,7 @@ import TopNav, { type TabId } from '@/components/top-nav';
 import BrowseResults from '@/components/browse-results';
 import GenreChips from '@/components/genre-chips';
 import LibraryView from '@/components/library-view';
-import MediaModal from '@/components/media-modal';
+import MediaModalContainer from '@/components/media-modal-container';
 import {
     fetchGenres,
     fetchTitleDetail,
@@ -95,6 +95,38 @@ function favouriteKey(mediaType: string, id: number) {
     return `${mediaType}:${id}`;
 }
 
+interface ContinueCard {
+    item: MediaItem;
+    progressPct: number | null;
+    badge: string | null;
+}
+
+/** One card per show: its newest saved row, a show having a row per episode watched.
+ * Rows come newest first. A finished newest row hides the show — resuming at the credits
+ * would be pointless, and an older half-watched episode would mislead. */
+function continueCards(progress: ProgressRow[], items: Map<string, MediaItem>): ContinueCard[] {
+    const cards: ContinueCard[] = [];
+    const seen = new Set<string>();
+    for (const row of progress) {
+        const key = favouriteKey(row.mediaType, row.tmdbId);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const finished =
+            row.durationSeconds != null && row.progressSeconds >= row.durationSeconds * 0.97;
+        const item = items.get(key);
+        if (finished || !item) continue; // a failed detail fetch just skips the card
+        cards.push({
+            item,
+            progressPct: row.durationSeconds
+                ? Math.round((row.progressSeconds / row.durationSeconds) * 100)
+                : null,
+            badge:
+                row.season != null && row.episode != null ? `S${row.season}E${row.episode}` : null,
+        });
+    }
+    return cards;
+}
+
 function headingFor(tab: TabId, query: string, genres: Set<string>) {
     if (query) return `Results for “${query}”`;
     if (tab === 'library') return 'Library';
@@ -111,7 +143,6 @@ interface BrowseState {
     genres: Set<string>;
     genreList: GenreInfo[];
     selected: MediaItem | null;
-    selectedDetail: MediaItem | null;
     // Server-backed favourites, keyed mediaType:tmdbId (the two TMDB id
     // spaces collide, so the id alone would mix movies and shows).
     favourites: Set<string>;
@@ -126,7 +157,6 @@ type BrowseAction =
     | { type: 'clear-genres' }
     | { type: 'genres-loaded'; genreList: GenreInfo[] }
     | { type: 'select'; item: MediaItem | null }
-    | { type: 'detail'; item: MediaItem }
     | { type: 'toggle-favourite'; key: string }
     | { type: 'favourites-loaded'; favourites: Set<string> };
 
@@ -137,7 +167,6 @@ const initialState: BrowseState = {
     genres: new Set(),
     genreList: [],
     selected: null,
-    selectedDetail: null,
     favourites: new Set(),
 };
 
@@ -168,10 +197,7 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
         case 'genres-loaded':
             return { ...state, genreList: action.genreList };
         case 'select':
-            // The list item opens the modal instantly; details arrive separately.
-            return { ...state, selected: action.item, selectedDetail: null };
-        case 'detail':
-            return { ...state, selectedDetail: action.item };
+            return { ...state, selected: action.item };
         case 'toggle-favourite': {
             const favourites = new Set(state.favourites);
             if (favourites.has(action.key)) favourites.delete(action.key);
@@ -212,15 +238,11 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         initBrowseState,
     );
     const navigate = useNavigate();
-    const { tab, query, debouncedQuery, genres, genreList, selected, selectedDetail, favourites } =
-        state;
+    const { tab, query, debouncedQuery, genres, genreList, selected, favourites } = state;
 
     // Rapid like/unlike clicking: dismiss the previous favourite toast so the
     // stack doesn't pile up three-deep.
     const favouriteToastId = useRef<string | number | null>(null);
-    // The modal's detail fetch may only deliver into the modal that asked.
-    const selectedRef = useRef<MediaItem | null>(null);
-    selectedRef.current = selected;
     // Real watch progress feeds the modal bars, keyed mediaType:tmdbId.
     const [progressByTitle, setProgressByTitle] = useState<Map<string, ProgressRow>>(new Map());
     // Library tab data: the two server lists plus one detail fetch per title.
@@ -359,21 +381,6 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         };
     }, [tab, libraryReloadKey]);
 
-    // Modal enrichment: the list item opens instantly, the detail call fills
-    // in runtime/seasons behind it, and a closed modal discards the late answer.
-    useEffect(() => {
-        if (!selected || selected.mediaType == null) return;
-        fetchTitleDetail(selected.mediaType, selected.id)
-            .then((detail) => {
-                if (selectedRef.current?.id === selected.id)
-                    dispatch({ type: 'detail', item: detail });
-            })
-            .catch(() => {
-                if (selectedRef.current?.id === selected.id)
-                    toast.error('Could not load full details');
-            });
-    }, [selected]);
-
     /** Enter / the search icon: a search becomes its own history entry. On the
      * search page it replaces instead, so back doesn't step through every edit. */
     function submitSearch() {
@@ -453,43 +460,10 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     // TMDB's page-capped numbers (10,000, 20,001), so the rows count loaded titles.
     const searchTotal = movies.totalResults + shows.totalResults;
 
-    // Library cards: continue-watching rows (finished ones stay out — they'd
-    // resume at the credits) plus the favourites list, both as MediaItems.
-    const libraryContinueCards: {
-        item: MediaItem;
-        progressPct: number | null;
-        badge: string | null;
-    }[] = [];
-    for (const row of libraryProgress) {
-        const finished =
-            row.durationSeconds != null && row.progressSeconds >= row.durationSeconds * 0.97;
-        if (finished) continue;
-        const item = libraryItems.get(favouriteKey(row.mediaType, row.tmdbId));
-        if (!item) continue; // a failed detail fetch just skips the card
-        libraryContinueCards.push({
-            item,
-            progressPct: row.durationSeconds
-                ? Math.round((row.progressSeconds / row.durationSeconds) * 100)
-                : null,
-            badge:
-                row.season != null && row.episode != null ? `S${row.season}E${row.episode}` : null,
-        });
-    }
+    const libraryContinueCards = continueCards(libraryProgress, libraryItems);
     const libraryFavouriteCards = libraryFavourites
         .map((fav) => libraryItems.get(favouriteKey(fav.mediaType, fav.tmdbId)))
         .filter((item): item is MediaItem => item != null);
-
-    // The modal's bar: the winning row for the selected title, as a percent.
-    const selectedProgressRow =
-        selected?.mediaType != null
-            ? progressByTitle.get(favouriteKey(selected.mediaType, selected.id))
-            : undefined;
-    const selectedProgressPct =
-        selectedProgressRow?.durationSeconds != null
-            ? Math.round(
-                  (selectedProgressRow.progressSeconds / selectedProgressRow.durationSeconds) * 100,
-              )
-            : undefined;
 
     return (
         <div className="min-h-dvh">
@@ -562,26 +536,20 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             </main>
 
             {selected && (
-                <MediaModal
-                    item={{
-                        ...(selectedDetail ?? selected),
-                        progress: selectedProgressPct,
-                        progressSeason: selectedProgressRow?.season ?? undefined,
-                        progressEpisode: selectedProgressRow?.episode ?? undefined,
-                    }}
+                <MediaModalContainer
+                    key={favouriteKey(selected.mediaType ?? '', selected.id)}
+                    selected={selected}
                     isFavourite={
                         selected.mediaType != null &&
                         favourites.has(favouriteKey(selected.mediaType, selected.id))
                     }
-                    onToggleFavourite={() => toggleFavourite(selected)}
-                    onWatch={() => {
-                        const target = selectedDetail ?? selected;
-                        if (!target || target.mediaType == null) return;
-                        // The route carries the title's identity (id + slug); coordinates
-                        // stay in the watch page's own state.
-                        navigate(watchPath(target.mediaType, target.id, target.title));
-                    }}
-                    onStartOver={() => startOver(selectedDetail ?? selected)}
+                    progressRow={
+                        selected.mediaType != null
+                            ? progressByTitle.get(favouriteKey(selected.mediaType, selected.id))
+                            : undefined
+                    }
+                    onToggleFavourite={toggleFavourite}
+                    onStartOver={startOver}
                     onClose={() => dispatch({ type: 'select', item: null })}
                 />
             )}
