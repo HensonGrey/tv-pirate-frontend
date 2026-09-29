@@ -36,7 +36,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     const isTv = mediaType === 'tv';
 
     // The nav's search doesn't filter this page — Enter carries the query to
-    // the search page (/search?q=).
+    // the search page (/?search=).
     const [query, setQuery] = useState('');
 
     const [item, setItem] = useState<MediaItem | null>(null);

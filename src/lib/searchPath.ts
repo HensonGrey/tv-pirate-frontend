@@ -1,5 +1,4 @@
-/** "star wars" → "/search?q=star+wars" — the dedicated search page, so a
- * search is a history entry that back navigation returns to. */
+/** "star wars" → "/?search=star+wars" — the browse page, searching in place. */
 export function searchPath(query: string): string {
-    return `/search?${new URLSearchParams({ q: query })}`;
+    return `/?${new URLSearchParams({ search: query })}`;
 }

@@ -15,7 +15,6 @@ import { continueCards, favouriteCards } from '@/lib/libraryCards';
 import { LoadStatus } from '@/lib/loadStatus';
 import { titleKey } from '@/lib/titleKey';
 import { watchPath } from '@/lib/watchPath';
-import { searchPath } from '@/lib/searchPath';
 import type { StoredUser } from '@/lib/authStorage';
 
 interface HomePageProps {
@@ -34,14 +33,14 @@ function headingFor(tab: TabId, query: string, genres: Set<string>) {
     return genres.size > 0 ? `Genres: ${[...genres].join(' + ')}` : 'Trending now';
 }
 
-// --- Browse state: the page's inputs (tab, search, genres) and the modal.
+// --- Browse state: the page's inputs (tab, search box) and the modal. The
+// selected genres live in the URL (?genres=), not here.
 // The title lists themselves live in useTitleList, one per media type.
 
 interface BrowseState {
     tab: TabId;
     query: string;
     debouncedQuery: string;
-    genres: Set<string>;
     genreList: GenreInfo[];
     selected: MediaItem | null;
 }
@@ -51,8 +50,6 @@ type BrowseAction =
     | { type: 'query'; query: string }
     | { type: 'query-debounced'; query: string }
     | { type: 'query-restored'; query: string }
-    | { type: 'toggle-genre'; name: string }
-    | { type: 'clear-genres' }
     | { type: 'genres-loaded'; genreList: GenreInfo[] }
     | { type: 'select'; item: MediaItem | null };
 
@@ -60,7 +57,6 @@ const initialState: BrowseState = {
     tab: 'browse',
     query: '',
     debouncedQuery: '',
-    genres: new Set(),
     genreList: [],
     selected: null,
 };
@@ -74,21 +70,13 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
         case 'query-debounced':
             return { ...state, debouncedQuery: action.query };
         case 'query-restored':
-            // The URL names what the box already holds (Enter, or the live
-            // ?q= sync): keep the typed text, trailing space and all, and
-            // just skip the debounce.
+            // The URL names what the box already holds (the live ?search= sync):
+            // keep the typed text, trailing space and all, and just skip the
+            // debounce.
             if (action.query === state.query.trim()) {
                 return { ...state, debouncedQuery: action.query };
             }
             return { ...state, query: action.query, debouncedQuery: action.query };
-        case 'toggle-genre': {
-            const genres = new Set(state.genres);
-            if (genres.has(action.name)) genres.delete(action.name);
-            else genres.add(action.name);
-            return { ...state, genres };
-        }
-        case 'clear-genres':
-            return { ...state, genres: new Set() };
         case 'genres-loaded':
             return { ...state, genreList: action.genreList };
         case 'select':
@@ -99,8 +87,8 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
 }
 
 /** Fold the tab a watch-page nav click hands over via route state, and the
- * search page's ?q=, into the initial browse state (debouncedQuery prefilled
- * so the search fires immediately instead of waiting out the debounce). */
+ * URL's ?search=, into the initial browse state (debouncedQuery prefilled so the
+ * search fires immediately instead of waiting out the debounce). */
 function initBrowseState(seed: { tab?: TabId; query: string }): BrowseState {
     return {
         ...initialState,
@@ -116,16 +104,39 @@ function initBrowseState(seed: { tab?: TabId; query: string }): BrowseState {
 export default function HomePage({ user, onLogout }: HomePageProps) {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
-    // "/" and "/search?q=" both render this page; only the search page has a query in its URL.
-    const isSearchPage = location.pathname === '/search';
-    const urlQuery = isSearchPage ? (searchParams.get('q') ?? '').trim() : '';
+    // The search and the genre chips both live in the URL: /?search=star+wars&genres=Action,Drama
+    const urlQuery = (searchParams.get('search') ?? '').trim();
+    const urlGenres = searchParams.get('genres') ?? '';
+    const genres = useMemo(() => new Set(urlGenres.split(',').filter(Boolean)), [urlGenres]);
     const [state, dispatch] = useReducer(
         browseReducer,
         { tab: (location.state as { tab?: TabId } | null)?.tab, query: urlQuery },
         initBrowseState,
     );
     const navigate = useNavigate();
-    const { tab, query, debouncedQuery, genres, genreList, selected } = state;
+    const { tab, query, debouncedQuery, genreList, selected } = state;
+
+    /** Set params (an empty value removes one), keeping the rest; replace, so
+     * back doesn't step through every keystroke and chip click. */
+    function updateParams(patch: { search?: string; genres?: string }) {
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                for (const [key, value] of Object.entries(patch)) {
+                    if (value) next.set(key, value);
+                    else next.delete(key);
+                }
+                return next;
+            },
+            { replace: true },
+        );
+    }
+
+    function toggleGenre(name: string) {
+        const next = new Set(genres);
+        if (!next.delete(name)) next.add(name);
+        updateParams({ genres: [...next].sort().join(',') });
+    }
 
     // One list each, shared by the hearts, the modal's bar and the Library.
     const favourites = useFavourites();
@@ -163,28 +174,17 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         return () => clearTimeout(timer);
     }, [trimmed]);
 
-    // URL → box: back/forward between searches (or back to "/") shows the
-    // query that history entry was for.
+    // URL → box: back/forward, or a link with ?search=, shows the query that
+    // history entry was for.
     useEffect(() => {
         dispatch({ type: 'query-restored', query: urlQuery });
     }, [urlQuery]);
 
-    // Box → URL: typing on home opens the search page once the query is long
-    // enough (a push, so back returns to home); on the search page, live typing
-    // keeps ?q= current (replace, not push), so coming back from a title lands
-    // on the latest search, and an emptied box leaves for home. Runs on
-    // debouncedTrimmed only: on back/forward the URL changes first, and the
-    // stale box must not win.
+    // Box → URL: live typing keeps ?search= current, so coming back from a title
+    // lands on the latest search. Runs on debouncedTrimmed only: on
+    // back/forward the URL changes first, and the stale box must not win.
     useEffect(() => {
-        if (!isSearchPage) {
-            if (debouncedTrimmed.length >= MIN_SEARCH_LENGTH)
-                navigate(searchPath(debouncedTrimmed));
-            return;
-        }
-        if (!debouncedTrimmed) navigate('/', { replace: true });
-        else if (debouncedTrimmed !== urlQuery) {
-            setSearchParams({ q: debouncedTrimmed }, { replace: true });
-        }
+        if (debouncedTrimmed !== urlQuery) updateParams({ search: debouncedTrimmed });
     }, [debouncedTrimmed]);
 
     // Genre chips load once per session; the backend caches the table 24 h.
@@ -194,11 +194,11 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             .catch(() => toast.error('Could not load the genre list'));
     }, []);
 
-    /** Enter / the search icon: a search becomes its own history entry. On the
-     * search page it replaces instead, so back doesn't step through every edit. */
+    /** Enter / the search icon: search now instead of waiting out the debounce. */
     function submitSearch() {
         if (trimmed.length < MIN_SEARCH_LENGTH) return;
-        navigate(searchPath(trimmed), { replace: isSearchPage });
+        dispatch({ type: 'query-debounced', query: trimmed });
+        updateParams({ search: trimmed });
     }
 
     /** "Start over": clear every saved row for the title, then jump into the player. */
@@ -221,8 +221,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                 tab={tab}
                 onTabChange={(next) => {
                     dispatch({ type: 'tab', tab: next });
-                    // A tab leaves the search page — its query clears with the URL.
-                    if (isSearchPage) navigate('/');
+                    // A tab click ends the search.
+                    updateParams({ search: '' });
                 }}
                 query={query}
                 onQueryChange={(next) => dispatch({ type: 'query', query: next })}
@@ -249,8 +249,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     <GenreChips
                         genreList={genreList}
                         selected={genres}
-                        onToggle={(name) => dispatch({ type: 'toggle-genre', name })}
-                        onClear={() => dispatch({ type: 'clear-genres' })}
+                        onToggle={toggleGenre}
+                        onClear={() => updateParams({ genres: '' })}
                     />
                 )}
 
@@ -289,7 +289,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         onSelect={(picked) => dispatch({ type: 'select', item: picked })}
                         onClearFilters={() => {
                             dispatch({ type: 'query', query: '' });
-                            dispatch({ type: 'clear-genres' });
+                            updateParams({ search: '', genres: '' });
                         }}
                     />
                 )}

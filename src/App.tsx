@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import { Toaster } from '@/components/ui/sonner';
 import GuestView from '@/components/GuestView';
 import HomePage from '@/pages/home';
@@ -8,6 +8,14 @@ import RequireAuth from '@/components/require-auth';
 import { SESSION_EXPIRED_EVENT } from '@/api/client';
 import { fetchMe, logout } from '@/api/auth';
 import { getUser, type StoredUser } from '@/lib/authStorage';
+
+function SearchRedirect() {
+    const params = new URLSearchParams(useLocation().search);
+    const old = params.get('q');
+    if (old !== null) params.set('search', old);
+    params.delete('q');
+    return <Navigate to={{ pathname: '/', search: params.toString() }} replace />;
+}
 
 function App() {
     const [user, setUser] = useState<StoredUser | null>(getUser);
@@ -61,11 +69,8 @@ function App() {
                             path="/"
                             element={<HomePage user={user!} onLogout={handleLogout} />}
                         />
-                        {/* The same browse page, seeded by ?q= — see HomePage. */}
-                        <Route
-                            path="/search"
-                            element={<HomePage user={user!} onLogout={handleLogout} />}
-                        />
+                        {/* Old search links: the query moved onto "/" as ?search= */}
+                        <Route path="/search" element={<SearchRedirect />} />
                         {/* Watch routes carry the title's identity only; season/episode
                 stay in component state (server progress will own them).
                 The watch page renders the same app shell as home. */}
