@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Film, Flame, LayoutGrid, Library, LogOut, Search, Skull, Tv } from 'lucide-react';
+import { Flame, LayoutGrid, Library, LogOut, Search, Skull } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/confirm-dialog';
@@ -9,18 +9,17 @@ import ThemeIconButton from '@/components/theme-icon-button';
 import { cn } from '@/lib/utils';
 import type { StoredUser } from '@/lib/authStorage';
 
-export type TabId = 'trending' | 'shows' | 'movies' | 'genres' | 'library';
+export type TabId = 'trending' | 'genres' | 'library';
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
     { id: 'trending', label: 'Trending', icon: Flame },
-    { id: 'shows', label: 'Shows', icon: Tv },
-    { id: 'movies', label: 'Movies', icon: Film },
     { id: 'genres', label: 'Genres', icon: LayoutGrid },
     { id: 'library', label: 'Library', icon: Library },
 ];
 
 interface TopNavProps {
-    tab: TabId;
+    /** The highlighted tab; none on pages outside the tabs (watch). */
+    tab?: TabId;
     onTabChange: (tab: TabId) => void;
     query: string;
     onQueryChange: (query: string) => void;
@@ -174,9 +173,7 @@ export default function TopNav({
                 </div>
             </div>
 
-            {/* Mobile tab strip: icons only on narrow screens — five labelled
-                tabs can't fit a phone width, and the strip's hidden scrollbar
-                makes the cut-off ones look gone. Labels return from sm up. */}
+            {/* Mobile tab strip: icons only on narrow screens, labels from sm up. */}
             <nav
                 aria-label="Sections"
                 className="no-scrollbar flex gap-1 overflow-x-auto px-4 pb-2 md:hidden"

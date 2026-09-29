@@ -7,14 +7,14 @@ import type { MediaType } from '@/api/tmdb';
 const LOOK = {
     movie: {
         label: 'Movies',
-        empty: 'No movies on this page — try the next one.',
+        empty: 'No movies match.',
         icon: Film,
         box: 'border-movie/40 bg-movie/8 [--row-accent:var(--movie)]',
         badge: 'bg-movie/15 text-movie',
     },
     tv: {
         label: 'Shows',
-        empty: 'No shows on this page — try the next one.',
+        empty: 'No shows match.',
         icon: Tv,
         box: 'border-show/40 bg-show/8 [--row-accent:var(--show)]',
         badge: 'bg-show/15 text-show',
@@ -23,14 +23,15 @@ const LOOK = {
 
 interface MediaSectionProps {
     mediaType: MediaType;
-    /** Titles of this type on the page; 0 shows the "try the next one" line. */
     count: number;
+    /** Loaded, and nothing matched: the empty line replaces the row. */
+    empty: boolean;
     children: ReactNode;
 }
 
 /** One media type's half of a mixed results page, boxed and tinted in its
  * own colour so Movies and Shows read as separate groups at a glance. */
-export default function MediaSection({ mediaType, count, children }: MediaSectionProps) {
+export default function MediaSection({ mediaType, count, empty, children }: MediaSectionProps) {
     const look = LOOK[mediaType];
     const Icon = look.icon;
     return (
@@ -43,13 +44,11 @@ export default function MediaSection({ mediaType, count, children }: MediaSectio
                     <Icon className="size-4" />
                 </span>
                 {look.label}
-                <span className="text-sm font-normal text-muted-foreground">{count}</span>
+                {count > 0 && (
+                    <span className="text-sm font-normal text-muted-foreground">{count}</span>
+                )}
             </h3>
-            {count > 0 ? (
-                children
-            ) : (
-                <p className="mt-3 text-sm text-muted-foreground">{look.empty}</p>
-            )}
+            {empty ? <p className="mt-3 text-sm text-muted-foreground">{look.empty}</p> : children}
         </section>
     );
 }

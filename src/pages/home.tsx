@@ -5,22 +5,18 @@ import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
 import FeaturedBanner from '@/components/featured-banner';
 import LibraryView from '@/components/library-view';
-import MediaCard from '@/components/media-card';
+import MediaRow from '@/components/media-row';
 import MediaSection from '@/components/media-section';
 import MediaModal from '@/components/media-modal';
-import Pagination from '@/components/pagination';
 import { Button } from '@/components/ui/button';
 import {
-    fetchDiscover,
     fetchGenres,
     fetchTitleDetail,
-    fetchTrending,
-    searchTitles,
     type GenreInfo,
     type MediaItem,
     type MediaType,
-    type PageResponse,
 } from '@/api/tmdb';
+import { useTitleList, type TitleList } from '@/hooks/use-title-list';
 import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress';
 import {
     addFavourite,
@@ -39,13 +35,9 @@ interface HomePageProps {
     onLogout: () => void;
 }
 
-type TypeFilter = 'all' | MediaType;
-
 /** Search only kicks in from 3 characters — shorter queries are noise (and,
  * against TMDB, wasted requests). */
 const MIN_SEARCH_LENGTH = 3;
-/** TMDB serves 20 results per page. */
-const PAGE_SIZE = 20;
 /** Keystrokes are debounced so a fetch fires only when typing pauses. */
 const SEARCH_DEBOUNCE_MS = 350;
 /** Library titles are fetched this many at a time, so a big library can't tie up the server's threads. */
@@ -113,29 +105,18 @@ function headingFor(tab: TabId, query: string, genres: Set<string>) {
     if (tab === 'genres') {
         return genres.size > 0 ? `Genres: ${[...genres].join(' + ')}` : 'Browse genres';
     }
-    if (tab === 'shows') return 'TV shows';
-    if (tab === 'movies') return 'Movies';
     return 'Trending now';
 }
 
-// --- Browse state: one reducer instead of a dozen useStates. ---
-// Filter changes rewind the page, responses update items + loading + error
-// together — every rule about how state moves lives in exactly one place.
+// --- Browse state: the page's inputs (tab, search, genres) and the modal.
+// The title lists themselves live in useTitleList, one per media type.
 
 interface BrowseState {
     tab: TabId;
     query: string;
     debouncedQuery: string;
-    typeFilter: TypeFilter;
     genres: Set<string>;
     genreList: GenreInfo[];
-    page: number;
-    items: MediaItem[];
-    totalPages: number;
-    totalResults: number;
-    loading: boolean;
-    error: string | null;
-    reloadKey: number; // bumped by retry to re-run the fetch
     selected: MediaItem | null;
     selectedDetail: MediaItem | null;
     // Server-backed favourites, keyed mediaType:tmdbId (the two TMDB id
@@ -148,15 +129,8 @@ type BrowseAction =
     | { type: 'query'; query: string }
     | { type: 'query-debounced'; query: string }
     | { type: 'query-restored'; query: string }
-    | { type: 'type-filter'; typeFilter: TypeFilter }
     | { type: 'toggle-genre'; name: string }
     | { type: 'clear-genres' }
-    | { type: 'page'; page: number }
-    | { type: 'request-started' }
-    | { type: 'request-skipped' }
-    | { type: 'page-loaded'; items: MediaItem[]; totalPages: number; totalResults: number }
-    | { type: 'request-failed'; message: string }
-    | { type: 'retry' }
     | { type: 'genres-loaded'; genreList: GenreInfo[] }
     | { type: 'select'; item: MediaItem | null }
     | { type: 'detail'; item: MediaItem }
@@ -167,16 +141,8 @@ const initialState: BrowseState = {
     tab: 'trending',
     query: '',
     debouncedQuery: '',
-    typeFilter: 'all',
     genres: new Set(),
     genreList: [],
-    page: 1,
-    items: [],
-    totalPages: 0,
-    totalResults: 0,
-    loading: false,
-    error: null,
-    reloadKey: 0,
     selected: null,
     selectedDetail: null,
     favourites: new Set(),
@@ -185,15 +151,9 @@ const initialState: BrowseState = {
 function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
     switch (action.type) {
         case 'tab':
-            // Re-selecting the active tab is a no-op — otherwise items clear
-            // while the fetch effect sees no changed deps. vault:tmdb-deep-dive#tab-noop
-            if (action.tab === state.tab) return state;
-            // Tab and genre switches clear the results so the skeleton shows
-            // instead of the previous tab's data lingering under a dim.
-            return { ...state, tab: action.tab, page: 1, items: [] };
+            return { ...state, tab: action.tab };
         case 'query':
-            // Search changes keep old results dimmed while the new ones load.
-            return { ...state, query: action.query, page: 1 };
+            return { ...state, query: action.query };
         case 'query-debounced':
             return { ...state, debouncedQuery: action.query };
         case 'query-restored':
@@ -203,36 +163,15 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
             if (action.query === state.query.trim()) {
                 return { ...state, debouncedQuery: action.query };
             }
-            return { ...state, query: action.query, debouncedQuery: action.query, page: 1 };
-        case 'type-filter':
-            return { ...state, typeFilter: action.typeFilter, page: 1 };
+            return { ...state, query: action.query, debouncedQuery: action.query };
         case 'toggle-genre': {
             const genres = new Set(state.genres);
             if (genres.has(action.name)) genres.delete(action.name);
             else genres.add(action.name);
-            return { ...state, genres, page: 1, items: [] };
+            return { ...state, genres };
         }
         case 'clear-genres':
-            return { ...state, genres: new Set(), page: 1, items: [] };
-        case 'page':
-            return { ...state, page: action.page };
-        case 'request-started':
-            return { ...state, loading: true, error: null };
-        case 'request-skipped':
-            // Mid-typing (1–2 chars): nothing is fetched, so nothing is loading.
-            return { ...state, loading: false };
-        case 'page-loaded':
-            return {
-                ...state,
-                items: action.items,
-                totalPages: action.totalPages,
-                totalResults: action.totalResults,
-                loading: false,
-            };
-        case 'request-failed':
-            return { ...state, error: action.message, loading: false };
-        case 'retry':
-            return { ...state, reloadKey: state.reloadKey + 1 };
+            return { ...state, genres: new Set() };
         case 'genres-loaded':
             return { ...state, genreList: action.genreList };
         case 'select':
@@ -253,39 +192,17 @@ function browseReducer(state: BrowseState, action: BrowseAction): BrowseState {
     }
 }
 
-/** One fetch for the current tab + filters; the genres tab with the "All"
- * toggle merges two discovers (movies + shows) into one page. */
-async function loadPage(
-    tab: TabId,
-    typeFilter: TypeFilter,
-    genres: string[],
-    query: string,
-    page: number,
-): Promise<{ items: MediaItem[]; totalPages: number; totalResults: number }> {
-    const toPage = (res: PageResponse<MediaItem>) => ({
-        items: res.results,
-        totalPages: res.totalPages,
-        totalResults: res.totalResults,
-    });
-    if (query) return toPage(await searchTitles(query, page));
-    if (tab === 'trending') return toPage(await fetchTrending('day', page));
-    if (tab === 'movies') return toPage(await fetchDiscover('movie', [], page));
-    if (tab === 'shows') return toPage(await fetchDiscover('tv', [], page));
-    if (typeFilter !== 'all') return toPage(await fetchDiscover(typeFilter, genres, page));
-    const [movies, shows] = await Promise.all([
-        fetchDiscover('movie', genres, page),
-        fetchDiscover('tv', genres, page),
-    ]);
-    return {
-        items: [...movies.results, ...shows.results],
-        totalPages: Math.max(movies.totalPages, shows.totalPages),
-        totalResults: movies.totalResults + shows.totalResults,
-    };
+/** The trending banner: the better-rated of the two lists' first titles
+ * (each list comes sorted by rating). */
+function bannerPick(movies: MediaItem[], shows: MediaItem[]): MediaItem | undefined {
+    const [movie, show] = [movies[0], shows[0]];
+    if (!movie || !show) return movie ?? show;
+    return (show.rating ?? 0) > (movie.rating ?? 0) ? show : movie;
 }
 
-/** The browse home, fed by the TMDB proxy: one API call per tab, debounced
- * search, pagination from the response. While loading, previous results
- * stay dimmed; the skeleton only shows when there's nothing yet. */
+/** The browse home, fed by the TMDB proxy: a movie list and a show list,
+ * debounced search. While loading, previous results stay dimmed; the
+ * skeleton only shows when there's nothing yet. */
 /** Fold the tab a watch-page nav click hands over via route state, and the
  * search page's ?q=, into the initial browse state (debouncedQuery prefilled
  * so the search fires immediately instead of waiting out the debounce). */
@@ -310,31 +227,12 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         initBrowseState,
     );
     const navigate = useNavigate();
-    const {
-        tab,
-        query,
-        debouncedQuery,
-        typeFilter,
-        genres,
-        genreList,
-        page,
-        items,
-        totalPages,
-        totalResults,
-        loading,
-        error,
-        reloadKey,
-        selected,
-        selectedDetail,
-        favourites,
-    } = state;
+    const { tab, query, debouncedQuery, genres, genreList, selected, selectedDetail, favourites } =
+        state;
 
     // Rapid like/unlike clicking: dismiss the previous favourite toast so the
     // stack doesn't pile up three-deep.
     const favouriteToastId = useRef<string | number | null>(null);
-    // Monotonic request token: a response only lands if no newer request
-    // started while it was in flight (fast tab/filter flipping).
-    const requestId = useRef(0);
     // The modal's detail fetch may only deliver into the modal that asked.
     const selectedRef = useRef<MediaItem | null>(null);
     selectedRef.current = selected;
@@ -351,6 +249,21 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     const trimmed = query.trim();
     const debouncedTrimmed = debouncedQuery.trim();
     const searching = trimmed.length >= MIN_SEARCH_LENGTH;
+
+    // Under-3-char queries fetch nothing: the "keep typing" hint owns the screen.
+    const tooShort = debouncedTrimmed !== '' && debouncedTrimmed.length < MIN_SEARCH_LENGTH;
+    // The Library tab shows its own view; everything else, both rows.
+    const source =
+        tooShort || (tab === 'library' && !debouncedTrimmed)
+            ? null
+            : {
+                  tab,
+                  genres: tab === 'genres' ? [...genres].sort().join() : '',
+                  query: debouncedTrimmed,
+              };
+    const movies = useTitleList('movie', source);
+    const shows = useTitleList('tv', source);
+    const lists = source ? [movies, shows] : [];
 
     // Debounce the search box: the fetch reads debouncedTrimmed, so it only
     // fires once the user pauses.
@@ -457,36 +370,6 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         };
     }, [tab, libraryReloadKey]);
 
-    // The main fetch. Re-runs on any tab/filter/page change; stale responses
-    // are dropped by the requestId guard. Under-3-char queries skip it — the
-    // "keep typing" hint owns the screen until then.
-    useEffect(() => {
-        // The library tab has no browse fetch — its view owns its data.
-        if (tab === 'library' && !debouncedTrimmed) {
-            dispatch({ type: 'request-skipped' });
-            return;
-        }
-        if (debouncedTrimmed && debouncedTrimmed.length < MIN_SEARCH_LENGTH) {
-            dispatch({ type: 'request-skipped' });
-            return;
-        }
-        const id = ++requestId.current;
-        dispatch({ type: 'request-started' });
-        loadPage(tab, typeFilter, [...genres], debouncedTrimmed, page)
-            .then((result) => {
-                if (requestId.current !== id) return;
-                dispatch({ type: 'page-loaded', ...result });
-            })
-            .catch(() => {
-                if (requestId.current !== id) return;
-                dispatch({
-                    type: 'request-failed',
-                    message:
-                        "Couldn't load titles. The server may be busy — try again in a moment.",
-                });
-            });
-    }, [tab, typeFilter, genres, page, debouncedTrimmed, reloadKey]);
-
     // Modal enrichment: the list item opens instantly, the detail call fills
     // in runtime/seasons behind it, and a closed modal discards the late answer.
     useEffect(() => {
@@ -577,50 +460,29 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         navigate(`/${target.mediaType}/${target.id}-${slugify(target.title)}`);
     }
 
-    // Client-side narrowing of whatever page we hold: trending and search
-    // return mixed pages, so the toggle can still slice them.
-    const visibleItems =
-        typeFilter === 'all' ? items : items.filter((m) => m.mediaType === typeFilter);
-    const pageMovies = visibleItems.filter((m) => m.mediaType === 'movie');
-    const pageShows = visibleItems.filter((m) => m.mediaType === 'tv');
-    const showBanner = tab === 'trending' && !searching && page === 1 && visibleItems.length > 0;
-    // 0 means "unknown" (TMDB can send null totals) — fall back to the page we hold.
-    const pageCount = totalPages > 0 ? totalPages : 1;
-    const totalShown = totalResults > 0 ? totalResults : items.length;
-    const rangeStart = (page - 1) * PAGE_SIZE + 1;
-    const rangeEnd = Math.min(page * PAGE_SIZE, totalShown);
+    const anyItems = lists.some((list) => list.items.length > 0);
+    const allFailed = lists.length > 0 && lists.every((list) => list.failed);
+    const nothingFound = !anyItems && lists.every((list) => !list.loading && !list.failed);
+    const refreshing = lists.some((list) => list.loading);
+    const banner =
+        tab === 'trending' && !searching ? bannerPick(movies.items, shows.items) : undefined;
+    // Only a search's totals are real counts; trending and discover report
+    // TMDB's page-capped numbers (10,000, 20,001), so the rows count loaded titles.
+    const searchTotal = movies.totalResults + shows.totalResults;
 
-    const mediaGrid = (gridItems: MediaItem[]) => (
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {gridItems.map((item) => (
-                <MediaCard
-                    key={item.id}
-                    item={item}
-                    onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-                />
-            ))}
-        </div>
-    );
-
-    // The boxed Movies/Shows halves of a mixed page: one row that scrolls
-    // sideways, so neither half pushes the other off screen. The padding keeps
-    // the hover ring and focus ring inside the scroll box's clip. Each cell is a
-    // one-column grid so the card (a button) fills it, and minmax(0) so a long
-    // title truncates instead of widening its card — and with it the poster.
-    const mediaRow = (rowItems: MediaItem[]) => (
-        <div className="-mx-1 mt-3 flex snap-x gap-4 overflow-x-auto px-1 pt-1 pb-3 scrollbar-row">
-            {rowItems.map((item) => (
-                <div
-                    key={item.id}
-                    className="grid w-36 shrink-0 grid-cols-1 snap-start sm:w-40 xl:w-44"
-                >
-                    <MediaCard
-                        item={item}
-                        onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-                    />
-                </div>
-            ))}
-        </div>
+    const section = (mediaType: MediaType, list: TitleList) => (
+        <MediaSection
+            mediaType={mediaType}
+            count={list.items.length}
+            empty={list.items.length === 0 && !list.loading && !list.failed}
+        >
+            {/* The key remounts the row for a new result set, so it starts scrolled left. */}
+            <MediaRow
+                key={`${tab}|${[...genres].join()}|${debouncedTrimmed}`}
+                list={list}
+                onSelect={(picked) => dispatch({ type: 'select', item: picked })}
+            />
+        </MediaSection>
     );
 
     // Library cards: continue-watching rows (finished ones stay out — they'd
@@ -678,51 +540,22 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
             />
 
             <main className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">
-                {/* Heading row: section title + movie/show toggle. */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-baseline gap-2.5">
                         <h2 className="font-heading text-lg font-semibold tracking-tight">
                             {headingFor(tab, searching ? trimmed : '', genres)}
                         </h2>
-                        {(!trimmed || searching) && (
+                        {searching && searchTotal > 0 && (
                             <span className="text-sm text-muted-foreground">
-                                {totalShown} titles
+                                {searchTotal} results
                             </span>
                         )}
                     </div>
-                    <div
-                        role="group"
-                        aria-label="Filter by type"
-                        className="flex rounded-full border bg-muted/60 p-0.5"
-                    >
-                        {(
-                            [
-                                ['all', 'All'],
-                                ['movie', 'Movies'],
-                                ['tv', 'Shows'],
-                            ] as const
-                        ).map(([value, label]) => (
-                            <button
-                                key={value}
-                                type="button"
-                                aria-pressed={typeFilter === value}
-                                onClick={() => dispatch({ type: 'type-filter', typeFilter: value })}
-                                className={cn(
-                                    'h-7 rounded-full px-3 text-xs font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-gold/60',
-                                    typeFilter === value
-                                        ? 'bg-gold text-gold-foreground'
-                                        : 'text-muted-foreground hover:text-foreground',
-                                )}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
                 </div>
 
-                {showBanner && (
+                {banner && (
                     <FeaturedBanner
-                        item={visibleItems[0]}
+                        item={banner}
                         onDetails={(picked) => dispatch({ type: 'select', item: picked })}
                         onWatch={(target) => {
                             // Same route as the card modal's Continue watching.
@@ -769,10 +602,10 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                 )}
 
                 {/* Content area. Previous results stay visible (dimmed) while a
-            refetch runs; a skeleton shows only when there's nothing yet. */}
+            refetch runs; an empty row shows placeholder cards instead. */}
                 <div
-                    aria-busy={loading}
-                    className={cn('transition-opacity', loading && 'opacity-60')}
+                    aria-busy={refreshing}
+                    className={cn('transition-opacity', refreshing && anyItems && 'opacity-60')}
                 >
                     {tab === 'library' && !trimmed ? (
                         <LibraryView
@@ -788,35 +621,24 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         <p className="py-24 text-center text-base text-muted-foreground">
                             Keep typing — search starts at {MIN_SEARCH_LENGTH} characters.
                         </p>
-                    ) : error ? (
+                    ) : allFailed ? (
                         <div className="flex flex-col items-center gap-3 py-24 text-center">
                             <WifiOff aria-hidden className="size-10 text-muted-foreground" />
                             <p className="font-heading text-lg font-semibold">
                                 Shore leave — the signal's down
                             </p>
-                            <p className="max-w-sm text-base text-muted-foreground">{error}</p>
-                            <Button variant="outline" onClick={() => dispatch({ type: 'retry' })}>
+                            <p className="max-w-sm text-base text-muted-foreground">
+                                Couldn't load titles. The server may be busy — try again in a
+                                moment.
+                            </p>
+                            <Button
+                                variant="outline"
+                                onClick={() => lists.forEach((list) => list.retry())}
+                            >
                                 Try again
                             </Button>
                         </div>
-                    ) : loading && items.length === 0 ? (
-                        <>
-                            <p role="status" className="sr-only">
-                                Loading titles
-                            </p>
-                            <div
-                                aria-hidden
-                                className="mt-3 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                            >
-                                {Array.from({ length: 12 }, (_, index) => (
-                                    <div
-                                        key={index}
-                                        className="aspect-2/3 animate-pulse rounded-xl bg-muted/60"
-                                    />
-                                ))}
-                            </div>
-                        </>
-                    ) : visibleItems.length === 0 ? (
+                    ) : nothingFound ? (
                         <div className="flex flex-col items-center gap-3 py-24 text-center">
                             <Skull aria-hidden className="size-10 text-muted-foreground" />
                             <p className="font-heading text-lg font-semibold">No treasure found</p>
@@ -830,43 +652,18 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                                 onClick={() => {
                                     dispatch({ type: 'query', query: '' });
                                     dispatch({ type: 'clear-genres' });
-                                    dispatch({ type: 'type-filter', typeFilter: 'all' });
                                 }}
                             >
                                 Clear filters
                             </Button>
                         </div>
-                    ) : typeFilter === 'all' ? (
-                        <div className="space-y-6">
-                            <MediaSection mediaType="movie" count={pageMovies.length}>
-                                {mediaRow(pageMovies)}
-                            </MediaSection>
-                            <MediaSection mediaType="tv" count={pageShows.length}>
-                                {mediaRow(pageShows)}
-                            </MediaSection>
-                        </div>
                     ) : (
-                        mediaGrid(visibleItems)
+                        <div className="space-y-6">
+                            {section('movie', movies)}
+                            {section('tv', shows)}
+                        </div>
                     )}
                 </div>
-
-                {/* Pagination footer */}
-                {visibleItems.length > 0 && (searching || !trimmed) && (
-                    <div className="flex flex-col items-center gap-2 pt-4">
-                        <p className="text-xs text-muted-foreground">
-                            Showing {rangeStart}–{rangeEnd} of {totalShown}
-                        </p>
-                        <Pagination
-                            page={page}
-                            pageCount={pageCount}
-                            onPageChange={(next) => {
-                                dispatch({ type: 'page', page: next });
-                                // Scroll lives here, not in the reducer — reducers stay pure.
-                                window.scrollTo(0, 0);
-                            }}
-                        />
-                    </div>
-                )}
             </main>
 
             {selected && (

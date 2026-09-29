@@ -45,13 +45,14 @@ export interface GenreInfo {
     tvId: number | null;
 }
 
-/** Mixed movies + shows trending right now. */
+/** Movies or tv trending right now. */
 export async function fetchTrending(
+    type: MediaType,
     window: TrendWindow = 'day',
     page = 1,
 ): Promise<PageResponse<MediaItem>> {
     const { data } = await client.get<PageResponse<MediaItem>>('/api/tmdb/trending', {
-        params: { window, page },
+        params: { type, window, page },
     });
     return data;
 }
@@ -69,10 +70,14 @@ export async function fetchDiscover(
     return data;
 }
 
-/** Title search across movies + shows (people never enter the results). */
-export async function searchTitles(query: string, page = 1): Promise<PageResponse<MediaItem>> {
+/** Title search in movies or tv (people never enter the results). */
+export async function searchTitles(
+    type: MediaType,
+    query: string,
+    page = 1,
+): Promise<PageResponse<MediaItem>> {
     const { data } = await client.get<PageResponse<MediaItem>>('/api/tmdb/search', {
-        params: { query, page },
+        params: { type, query, page },
     });
     return data;
 }

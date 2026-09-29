@@ -238,7 +238,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
           search runs on Enter by opening the search page. */}
             <TopNav
                 wide
-                tab={mediaType === 'tv' ? 'shows' : 'movies'}
                 onTabChange={(tab) => navigate('/', { state: { tab } })}
                 query={query}
                 onQueryChange={setQuery}
