@@ -9,15 +9,15 @@ const LOOK = {
         label: 'Movies',
         empty: 'No movies match.',
         icon: Film,
-        box: 'border-movie/40 bg-movie/8 [--row-accent:var(--movie)]',
-        badge: 'bg-movie/15 text-movie',
+        box: '[--row-accent:var(--movie)]',
+        title: 'text-movie',
     },
     tv: {
         label: 'Shows',
         empty: 'No shows match.',
         icon: Tv,
-        box: 'border-show/40 bg-show/8 [--row-accent:var(--show)]',
-        badge: 'bg-show/15 text-show',
+        box: '[--row-accent:var(--show)]',
+        title: 'text-show',
     },
 };
 
@@ -29,26 +29,36 @@ interface MediaSectionProps {
     children: ReactNode;
 }
 
-/** One media type's half of a mixed results page, boxed and tinted in its
- * own colour so Movies and Shows read as separate groups at a glance. */
+/** One media type's half of a mixed results page. No box — the cards sit on
+ * the page, and the header (accent-coloured title, rule, count) tells Movies
+ * and Shows apart. */
 export default function MediaSection({ mediaType, count, empty, children }: MediaSectionProps) {
     const look = LOOK[mediaType];
     const Icon = look.icon;
     return (
-        <section aria-label={look.label} className={cn('rounded-2xl border p-4 sm:p-5', look.box)}>
-            <h3 className="flex items-center gap-2.5 font-heading text-base font-semibold tracking-tight">
+        <section aria-label={look.label} className={look.box}>
+            <h3 className="flex items-center gap-3">
                 <span
-                    aria-hidden
-                    className={cn('flex size-7 items-center justify-center rounded-lg', look.badge)}
+                    className={cn(
+                        'flex items-center gap-2 font-heading text-xl font-bold tracking-tight',
+                        look.title,
+                    )}
                 >
-                    <Icon className="size-4" />
+                    <Icon aria-hidden className="size-5" />
+                    {look.label}
                 </span>
-                {look.label}
                 {count > 0 && (
-                    <span className="text-sm font-normal text-muted-foreground">{count}</span>
+                    <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                        {count} titles
+                    </span>
                 )}
+                <span aria-hidden className="h-px flex-1 bg-border" />
             </h3>
-            {empty ? <p className="mt-3 text-sm text-muted-foreground">{look.empty}</p> : children}
+            {empty ? (
+                <p className="mt-3 text-sm text-muted-foreground">{look.empty}</p>
+            ) : (
+                <div className="mt-4">{children}</div>
+            )}
         </section>
     );
 }

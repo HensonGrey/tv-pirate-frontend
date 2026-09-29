@@ -281,12 +281,18 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         dispatch({ type: 'query-restored', query: urlQuery });
     }, [urlQuery]);
 
-    // Box → URL: on the search page, live typing keeps ?q= current (replace,
-    // not push), so coming back from a title lands on the latest search; an
-    // emptied box leaves for home. Runs on debouncedTrimmed only: on
-    // back/forward the URL changes first, and the stale box must not win.
+    // Box → URL: typing on home opens the search page once the query is long
+    // enough (a push, so back returns to home); on the search page, live typing
+    // keeps ?q= current (replace, not push), so coming back from a title lands
+    // on the latest search, and an emptied box leaves for home. Runs on
+    // debouncedTrimmed only: on back/forward the URL changes first, and the
+    // stale box must not win.
     useEffect(() => {
-        if (!isSearchPage) return;
+        if (!isSearchPage) {
+            if (debouncedTrimmed.length >= MIN_SEARCH_LENGTH)
+                navigate(searchPath(debouncedTrimmed));
+            return;
+        }
         if (!debouncedTrimmed) navigate('/', { replace: true });
         else if (debouncedTrimmed !== urlQuery) {
             setSearchParams({ q: debouncedTrimmed }, { replace: true });
@@ -659,8 +665,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            {section('movie', movies)}
                             {section('tv', shows)}
+                            {section('movie', movies)}
                         </div>
                     )}
                 </div>

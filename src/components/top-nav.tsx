@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Flame, LayoutGrid, Library, LogOut, Search, Skull } from 'lucide-react';
+import { Clapperboard, Flame, LayoutGrid, Library, LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/confirm-dialog';
@@ -33,7 +33,7 @@ interface TopNavProps {
 }
 
 const ICON_BUTTON =
-    'flex size-9 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-gold/60';
+    'flex size-10 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-gold/60';
 
 /**
  * App shell: brand + section tabs on the left, search + theme + account on
@@ -103,8 +103,10 @@ export default function TopNav({
                     onClick={() => onTabChange('trending')}
                     className="flex items-center gap-2 rounded-lg px-1 py-0.5 outline-none focus-visible:ring-3 focus-visible:ring-gold/60"
                 >
-                    <Skull aria-hidden className="size-6 text-gold" />
-                    <span className="font-heading text-lg font-bold tracking-tight">tv-pirate</span>
+                    <Clapperboard aria-hidden className="size-6 text-gold" />
+                    <span className="font-heading text-lg font-bold tracking-tight">
+                        Adomination
+                    </span>
                 </button>
 
                 {/* Desktop tabs */}
@@ -140,7 +142,7 @@ export default function TopNav({
 
                 <div className="ml-auto flex items-center gap-1">
                     {/* Desktop search */}
-                    {searchInput(undefined, 'hidden md:block')}
+                    {searchInput(undefined, 'hidden md:block md:w-64 lg:w-96')}
                     {/* Mobile search toggle */}
                     <button
                         type="button"
@@ -149,11 +151,11 @@ export default function TopNav({
                         onClick={() => setMobileSearchOpen((open) => !open)}
                         className={cn(ICON_BUTTON, 'md:hidden')}
                     >
-                        <Search className="size-5" />
+                        <Search className="size-6" />
                     </button>
-                    <ThemeIconButton />
+                    <ThemeIconButton className="size-10 [&_svg]:size-6" />
                     {/* Account */}
-                    <Avatar className="ml-1 size-8 ring-1 ring-border">
+                    <Avatar className="ml-1 size-10 ring-1 ring-border">
                         {user.profilePictureUrl && (
                             <AvatarImage src={user.profilePictureUrl} alt={user.username} />
                         )}
@@ -166,9 +168,12 @@ export default function TopNav({
                         aria-label="Sign out"
                         title="Sign out"
                         onClick={() => (isGuest ? setSignOutOpen(true) : onLogout())}
-                        className={ICON_BUTTON}
+                        className={cn(
+                            ICON_BUTTON,
+                            'hover:bg-destructive/10 hover:text-destructive',
+                        )}
                     >
-                        <LogOut className="size-5" />
+                        <LogOut className="size-6" />
                     </button>
                 </div>
             </div>
