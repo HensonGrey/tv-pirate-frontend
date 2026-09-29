@@ -133,6 +133,11 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
 
     const [resolving, setResolving] = useState(false);
     const [sources, setSources] = useState<StreamSourceDto[] | null>(null);
+    // Nothing resolves until Play: this holds the selection Play was pressed for, so
+    // picking another episode or provider drops back to the Play button by itself.
+    const [playRequestedFor, setPlayRequestedFor] = useState<string | null>(null);
+    const playSelection = `${tmdbId}|${provider}|${season}|${episode}`;
+    const playRequested = playRequestedFor === playSelection;
     // Parsed caption cues for the current title/episode (empty = no captions).
     const [subtitleCues, setSubtitleCues] = useState<VttCue[]>([]);
     // Manual sync shift in half-second ticks: every sub file is timed to its
@@ -264,11 +269,10 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
             });
     }, [isTv, tmdbId, season]); // episode intentionally not a dep: changing it must not refetch
 
-    // Resolve-on-change, not resolve-on-play: sources follow provider/season/
-    // episode automatically. Cancelled runs stay silent — that's what keeps a
-    // fast chip-flip from spamming toasts.
+    // Resolve-on-play: browsing episodes costs no provider calls and no video buffering.
+    // Cancelled runs stay silent — that's what keeps a fast chip-flip from spamming toasts.
     useEffect(() => {
-        if (!provider || !item) {
+        if (!provider || !item || !playRequested) {
             setSources(null);
             return;
         }
@@ -309,17 +313,18 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                     { id: 'resolve-retry' },
                 );
                 setResolving(false);
+                setPlayRequestedFor(null); // back to the Play button, so it can be pressed again
             });
         return () => {
             cancelled = true;
             clearTimeout(retryTimer);
         };
-    }, [provider, item, mediaType, tmdbId, isTv, season, episode, resolveRetry]);
+    }, [provider, item, mediaType, tmdbId, isTv, season, episode, resolveRetry, playRequested]);
 
-    // Subtitles are an enhancement: one silent fetch per title/episode, and
+    // Subtitles are an enhancement: one silent fetch per played title/episode, and
     // the player just runs caption-less when the lookup misses.
     useEffect(() => {
-        if (!item) return;
+        if (!item || !playRequested) return;
         let cancelled = false;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
         const selection = `${tmdbId}|${season}|${episode}`;
@@ -343,7 +348,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
             cancelled = true;
             clearTimeout(retryTimer);
         };
-    }, [mediaType, tmdbId, isTv, season, episode, item, subtitleRetry]);
+    }, [mediaType, tmdbId, isTv, season, episode, item, subtitleRetry, playRequested]);
 
     function goBack() {
         // Direct URL visits have no in-app history — navigate(-1) would leave the app.
@@ -563,6 +568,8 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                                         // keying by source remounts it, which also resets the
                                         // playback position as a source switch should.
                                         key={activeSource.proxyUrl}
+                                        // Mounted only after Play was pressed, so it starts by itself.
+                                        autoPlay
                                         className="vds-player size-full"
                                         src={{
                                             src: absoluteProxyUrl(activeSource.proxyUrl),
@@ -629,21 +636,40 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                                                 className="absolute inset-0 size-full object-cover opacity-40 blur-sm"
                                             />
                                         )}
-                                        {resolving ? (
-                                            <LoaderCircle
-                                                aria-hidden
-                                                className="relative size-12 animate-spin text-gold"
-                                            />
+                                        {!playRequested ? (
+                                            <button
+                                                type="button"
+                                                disabled={!provider}
+                                                onClick={() => setPlayRequestedFor(playSelection)}
+                                                className="relative flex flex-col items-center gap-3 rounded-2xl p-4 text-foreground transition-colors outline-none hover:text-gold focus-visible:ring-3 focus-visible:ring-gold/60 disabled:opacity-50"
+                                            >
+                                                <Play aria-hidden className="size-14" />
+                                                <span className="text-sm font-medium">
+                                                    {isTv ? `Play S${season}E${episode}` : 'Play'}
+                                                </span>
+                                            </button>
                                         ) : (
-                                            <Play aria-hidden className="relative size-12" />
+                                            <>
+                                                {resolving ? (
+                                                    <LoaderCircle
+                                                        aria-hidden
+                                                        className="relative size-12 animate-spin text-gold"
+                                                    />
+                                                ) : (
+                                                    <Play
+                                                        aria-hidden
+                                                        className="relative size-12"
+                                                    />
+                                                )}
+                                                <p className="relative text-sm">
+                                                    {resolving
+                                                        ? 'Resolving sources…'
+                                                        : sources && sources.length === 0
+                                                          ? `No playable sources on ${provider}`
+                                                          : 'Loading…'}
+                                                </p>
+                                            </>
                                         )}
-                                        <p className="relative text-sm">
-                                            {resolving
-                                                ? 'Resolving sources…'
-                                                : sources && sources.length === 0
-                                                  ? `No playable sources on ${provider}`
-                                                  : 'Loading…'}
-                                        </p>
                                     </div>
                                 )}
                             </div>
