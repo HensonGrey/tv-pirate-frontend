@@ -56,14 +56,15 @@ export function useProgress() {
     }
 
     /** "Start over": every saved row for the title goes (a show restarts from S1E1).
-     * Optimistic — the cards drop it at once, and a failure puts the rows back. */
-    function clear(mediaType: MediaType, tmdbId: number) {
+     * Optimistic — the cards drop it at once, and a failure puts the rows back.
+     * Resolves once the server has answered, either way. */
+    function clear(mediaType: MediaType, tmdbId: number): Promise<void> {
         const key = titleKey(mediaType, tmdbId);
         const isTitle = (row: ProgressRow) => titleKey(row.mediaType, row.tmdbId) === key;
         const removed = rows.filter(isTitle);
 
         setRows((current) => current.filter((row) => !isTitle(row)));
-        clearProgress(mediaType, tmdbId).catch(() => {
+        return clearProgress(mediaType, tmdbId).catch(() => {
             setRows((current) =>
                 [...current, ...removed].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
             );

@@ -204,8 +204,9 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     /** "Start over": clear every saved row for the title, then jump into the player. */
     function startOver(target: MediaItem) {
         if (!target.mediaType) return;
-        progress.clear(target.mediaType, target.id);
-        navigate(watchPath(target.mediaType, target.id, target.title));
+        const { mediaType, id, title } = target;
+        // Go once the rows are gone: the watch page loads them on arrival.
+        void progress.clear(mediaType, id).then(() => navigate(watchPath(mediaType, id, title)));
     }
 
     // Only a search's totals are real counts; trending and discover report
