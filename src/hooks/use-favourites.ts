@@ -7,7 +7,7 @@ import {
     type FavouriteRow,
 } from '@/api/favourites';
 import type { MediaItem } from '@/api/tmdb';
-import { LoadStatus } from '@/lib/loadStatus';
+import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 
 /** The user's favourites: one list that every heart and the Library read. The watch page
@@ -15,7 +15,7 @@ import { titleKey } from '@/lib/titleKey';
  * it quietly (also the retry after a failed first load). */
 export function useFavourites() {
     const [rows, setRows] = useState<FavouriteRow[]>([]);
-    const [status, setStatus] = useState<LoadStatus>(LoadStatus.Loading);
+    const [status, setStatus] = useState<LoadStatusEnum>(LoadStatusEnum.Loading);
     const [reloadKey, setReloadKey] = useState(0);
     // Rapid like/unlike clicking: dismiss the previous toast so the stack doesn't pile up.
     const toastId = useRef<string | number | null>(null);
@@ -26,13 +26,13 @@ export function useFavourites() {
             .then((loaded) => {
                 if (cancelled) return;
                 setRows(loaded);
-                setStatus(LoadStatus.Ready);
+                setStatus(LoadStatusEnum.Ready);
             })
             .catch(() => {
                 // Hearts read as unliked; a list we already have stays as it was.
                 if (!cancelled)
                     setStatus((current) =>
-                        current === LoadStatus.Ready ? current : LoadStatus.Failed,
+                        current === LoadStatusEnum.Ready ? current : LoadStatusEnum.Failed,
                     );
             });
         return () => {
@@ -46,7 +46,9 @@ export function useFavourites() {
     );
 
     function reload() {
-        setStatus((current) => (current === LoadStatus.Failed ? LoadStatus.Loading : current));
+        setStatus((current) =>
+            current === LoadStatusEnum.Failed ? LoadStatusEnum.Loading : current,
+        );
         setReloadKey((key) => key + 1);
     }
 

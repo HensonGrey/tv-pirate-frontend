@@ -12,7 +12,7 @@ import { useLibraryItems } from '@/hooks/use-library-items';
 import { useProgress } from '@/hooks/use-progress';
 import { useTitleList } from '@/hooks/use-title-list';
 import { continueCards, favouriteCards } from '@/lib/libraryCards';
-import { LoadStatus } from '@/lib/loadStatus';
+import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 import { watchPath } from '@/lib/watchPath';
 import type { StoredUser } from '@/lib/authStorage';
@@ -257,13 +257,13 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                 {tab === 'library' && !trimmed ? (
                     <LibraryView
                         loading={
-                            progress.status === LoadStatus.Loading ||
-                            favourites.status === LoadStatus.Loading ||
+                            progress.status === LoadStatusEnum.Loading ||
+                            favourites.status === LoadStatusEnum.Loading ||
                             (library.loading && continueList.length + favouriteList.length === 0)
                         }
                         error={
-                            progress.status === LoadStatus.Failed ||
-                            favourites.status === LoadStatus.Failed
+                            progress.status === LoadStatusEnum.Failed ||
+                            favourites.status === LoadStatusEnum.Failed
                         }
                         onRetry={() => {
                             progress.reload();

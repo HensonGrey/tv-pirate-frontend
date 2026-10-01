@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress';
 import type { MediaType } from '@/api/tmdb';
-import { LoadStatus } from '@/lib/loadStatus';
+import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 
 /** The user's saved watch positions: one list that the modal's bar and the Library's
@@ -11,7 +11,7 @@ import { titleKey } from '@/lib/titleKey';
 export function useProgress() {
     // Newest first, as the backend sends them.
     const [rows, setRows] = useState<ProgressRow[]>([]);
-    const [status, setStatus] = useState<LoadStatus>(LoadStatus.Loading);
+    const [status, setStatus] = useState<LoadStatusEnum>(LoadStatusEnum.Loading);
     const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
@@ -20,13 +20,13 @@ export function useProgress() {
             .then((loaded) => {
                 if (cancelled) return;
                 setRows(loaded);
-                setStatus(LoadStatus.Ready);
+                setStatus(LoadStatusEnum.Ready);
             })
             .catch(() => {
                 // No bars is a graceful state; a list we already have stays as it was.
                 if (!cancelled)
                     setStatus((current) =>
-                        current === LoadStatus.Ready ? current : LoadStatus.Failed,
+                        current === LoadStatusEnum.Ready ? current : LoadStatusEnum.Failed,
                     );
             });
         return () => {
@@ -45,7 +45,9 @@ export function useProgress() {
     }, [rows]);
 
     function reload() {
-        setStatus((current) => (current === LoadStatus.Failed ? LoadStatus.Loading : current));
+        setStatus((current) =>
+            current === LoadStatusEnum.Failed ? LoadStatusEnum.Loading : current,
+        );
         setReloadKey((key) => key + 1);
     }
 
