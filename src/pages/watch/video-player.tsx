@@ -21,6 +21,7 @@ interface VideoPlayerProps {
     resumeTarget: number | null;
     onResumeConsumed: () => void;
     lastPositionRef: RefObject<number>;
+    playingRef: RefObject<boolean>;
 }
 
 /** The video itself: vidstack's player with its controls, the captions, the subtitle
@@ -39,6 +40,7 @@ export default function VideoPlayer({
     resumeTarget,
     onResumeConsumed,
     lastPositionRef,
+    playingRef,
 }: VideoPlayerProps) {
     // Manual sync shift in half-second ticks: every sub file is timed to its
     // own release, so a constant offset against the stream is normal —
@@ -70,6 +72,7 @@ export default function VideoPlayer({
                 resumeTarget={resumeTarget}
                 onResumeConsumed={onResumeConsumed}
                 lastPositionRef={lastPositionRef}
+                playingRef={playingRef}
             />
             <DefaultVideoLayout
                 icons={defaultLayoutIcons}

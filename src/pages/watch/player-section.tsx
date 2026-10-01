@@ -27,6 +27,7 @@ interface PlayerSectionProps {
     resumeTarget: number | null;
     onResumeConsumed: () => void;
     lastPositionRef: RefObject<number>;
+    playingRef: RefObject<boolean>;
 }
 
 /** The black box on the page where the video goes. It decides what the box shows:
@@ -42,6 +43,7 @@ export default function PlayerSection({
     resumeTarget,
     onResumeConsumed,
     lastPositionRef,
+    playingRef,
 }: PlayerSectionProps) {
     const playback = usePlayback(provider, selection);
     const cues = useSubtitleCues(selection, playback.requested);
@@ -68,6 +70,7 @@ export default function PlayerSection({
                         resumeTarget={resumeTarget}
                         onResumeConsumed={onResumeConsumed}
                         lastPositionRef={lastPositionRef}
+                        playingRef={playingRef}
                     />
                 ) : (
                     <div className="flex size-full flex-col items-center justify-center gap-3 text-muted-foreground">

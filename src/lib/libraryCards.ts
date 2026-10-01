@@ -1,6 +1,7 @@
 import type { FavouriteRow } from '@/api/favourites';
 import type { ProgressRow } from '@/api/progress';
 import type { MediaItem } from '@/api/tmdb';
+import { isFinished } from '@/lib/continuePoint';
 import { titleKey } from '@/lib/titleKey';
 
 export interface ContinueCard {
@@ -23,10 +24,8 @@ export function continueCards(
         const key = titleKey(row.mediaType, row.tmdbId);
         if (seen.has(key)) continue;
         seen.add(key);
-        const finished =
-            row.durationSeconds != null && row.progressSeconds >= row.durationSeconds * 0.97;
         const item = items.get(key);
-        if (finished || !item) continue;
+        if (isFinished(row) || !item) continue;
         cards.push({
             item,
             progressPct: row.durationSeconds

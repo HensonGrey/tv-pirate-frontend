@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useMediaRemote, useMediaState } from '@vidstack/react';
 import { saveProgress } from '@/api/progress';
 import type { MediaType } from '@/api/tmdb';
@@ -16,7 +16,9 @@ interface ProgressTrackerProps {
     resumeTarget: number | null;
     onResumeConsumed: () => void;
     /** Live position — a provider switch remounts the player and continues here. */
-    lastPositionRef: MutableRefObject<number>;
+    lastPositionRef: RefObject<number>;
+    /** Set while this device is playing, so the page doesn't move under a running video. */
+    playingRef: RefObject<boolean>;
 }
 
 const HEARTBEAT_MS = 15_000;
@@ -32,6 +34,7 @@ export default function ProgressTracker({
     resumeTarget,
     onResumeConsumed,
     lastPositionRef,
+    playingRef,
 }: ProgressTrackerProps) {
     const remote = useMediaRemote();
     const currentTime = useMediaState('currentTime');
@@ -126,6 +129,13 @@ export default function ProgressTracker({
         onResumeConsumed();
         remote.seek(resumeTarget);
     }, [canPlay, resumeTarget, onResumeConsumed, remote]);
+
+    useEffect(() => {
+        playingRef.current = !paused && !ended;
+        return () => {
+            playingRef.current = false;
+        };
+    }, [paused, ended, playingRef]);
 
     // Keep the parent's live-position ref warm for the next provider switch.
     useEffect(() => {

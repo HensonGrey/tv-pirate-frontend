@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TopNav from '@/components/top-nav';
 import Kicker from '@/components/kicker';
 import { fetchTitleDetail, type MediaItem, type MediaType } from '@/api/tmdb';
-import { fetchProgress, type ProgressRow } from '@/api/progress';
+import { useProgress } from '@/hooks/use-progress';
+import { continuePoint } from '@/lib/continuePoint';
 import { getPreferredProvider } from '@/lib/providerPreference';
 import { searchPath } from '@/lib/searchPath';
 import type { StoredUser } from '@/lib/authStorage';
@@ -25,7 +26,7 @@ interface WatchPageProps {
 
 /** Full-screen watch page at /movie/{id-slug} or /tv/{id-slug}. The URL
  * carries only the title's identity — season/episode live in component
- * state (TV defaults to S1E1; saved watch progress seeds them on mount).
+ * state, and follow the viewer's saved progress from any device (see continuePoint).
  * Nothing streams until Play is pressed (see usePlayback).
  * vault:streaming-providers-deep-dive#architecture */
 export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps) {
@@ -44,8 +45,6 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
 
     const [season, setSeason] = useState(1);
     const [episode, setEpisode] = useState(1);
-    // Saved positions for this title — seeds the resume seek and the pickers.
-    const [titleProgress, setTitleProgress] = useState<ProgressRow[]>([]);
     // Seek target for the player's next mount; null = start from zero.
     const [resumeTarget, setResumeTarget] = useState<number | null>(null);
     const [provider, setProvider] = useState<string | null>(getPreferredProvider());
@@ -53,6 +52,8 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     // Live position shared with ProgressTracker: a provider switch remounts
     // the player and continues from here.
     const lastPositionRef = useRef(0);
+    // True while this device is playing: the page won't move under a running video.
+    const playingRef = useRef(false);
 
     // The page owns its data (the URL is the only seed): a reload refetches
     // the title, so nothing depends on navigation state surviving.
@@ -74,52 +75,50 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         };
     }, [mediaType, tmdbId]);
 
-    // Watch progress seeds the resume point: the newest row for this title
-    // picks season/episode (tv) and becomes the player's seek target.
-    // Finished rows (>= 97%) don't resume — that would replay the credits.
+    // Saved positions, shared and live: another device saving progress updates them.
+    const progress = useProgress();
+    const titleRows = useMemo(
+        () => progress.rows.filter((row) => row.tmdbId === tmdbId && row.mediaType === mediaType),
+        [progress.rows, tmdbId, mediaType],
+    );
+    const titleRowsRef = useRef(titleRows);
+    titleRowsRef.current = titleRows;
+    const newest = titleRows[0];
+    const newestSave = newest ? `${newest.season}|${newest.episode}|${newest.updatedAt}` : null;
+
+    // Moves the page to where you left off (see continuePoint): on load, and whenever another
+    // device saves something newer — even over an episode you picked here. Never while this
+    // device is playing. Keyed on the newest save itself, so a reload that changes nothing
+    // leaves your own pick alone.
     useEffect(() => {
-        if (!tmdbId) return;
+        if (!item || playingRef.current) return;
         let cancelled = false;
-        fetchProgress()
-            .then((rows) => {
-                if (cancelled) return;
-                const forTitle = rows.filter(
-                    (row) => row.tmdbId === tmdbId && row.mediaType === mediaType,
-                );
-                setTitleProgress(forTitle);
-                const latest = forTitle[0]; // the backend sorts newest first
-                if (!latest) return;
-                const finished =
-                    latest.durationSeconds != null &&
-                    latest.progressSeconds >= latest.durationSeconds * 0.97;
-                if (!finished) {
-                    setResumeTarget(latest.progressSeconds);
-                    if (mediaType === 'tv' && latest.season != null && latest.episode != null) {
-                        setSeason(latest.season);
-                        setEpisode(latest.episode);
-                    }
-                }
-            })
-            .catch(() => {
-                // Progress is an enhancement — no row, no resume, no toast.
-            });
+        continuePoint(titleRowsRef.current, tmdbId, item.seasons ?? 1).then((point) => {
+            if (cancelled || !point) return;
+            if (point.season != null && point.episode != null) {
+                setSeason(point.season);
+                setEpisode(point.episode);
+            }
+            setResumeTarget(point.resumeSeconds);
+            lastPositionRef.current = 0;
+        });
         return () => {
             cancelled = true;
         };
-    }, [tmdbId, mediaType]);
+    }, [item, tmdbId, newestSave]);
 
     function selectSeason(next: number) {
         setSeason(next);
         setEpisode(1); // a new season starts at its first episode
         // Resume in-session too: a saved S4E1 continues, everything else starts at 0.
-        const row = titleProgress.find((r) => r.season === next && r.episode === 1);
+        const row = titleRows.find((r) => r.season === next && r.episode === 1);
         setResumeTarget(row?.progressSeconds ?? null);
         lastPositionRef.current = 0;
     }
 
     function selectEpisode(next: number) {
         setEpisode(next);
-        const row = titleProgress.find((r) => r.season === season && r.episode === next);
+        const row = titleRows.find((r) => r.season === season && r.episode === next);
         setResumeTarget(row?.progressSeconds ?? null);
         lastPositionRef.current = 0;
     }
@@ -177,6 +176,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                             resumeTarget={resumeTarget}
                             onResumeConsumed={() => setResumeTarget(null)}
                             lastPositionRef={lastPositionRef}
+                            playingRef={playingRef}
                         />
 
                         {/* Picker card: sections split by hairlines; the panel fits its
