@@ -8,6 +8,17 @@ export const SESSION_EXPIRED_EVENT = 'tv-pirate:session-expired';
 // withCredentials lets the browser send (and store) the httpOnly auth cookies cross-origin (5173 → 8080).
 export const client = axios.create({ baseURL: API_BASE, withCredentials: true });
 
+// Names this tab. The server echoes it in the live-sync note that a write causes,
+// so the tab can skip its own. Must match SyncHub.CLIENT_ID_HEADER on the backend.
+export const CLIENT_ID = crypto.randomUUID();
+const CLIENT_ID_HEADER = 'X-Client-Id';
+
+// Only writes carry it: on a GET a custom header would force a CORS preflight per read.
+client.interceptors.request.use((config) => {
+    if (config.method?.toLowerCase() !== 'get') config.headers.set(CLIENT_ID_HEADER, CLIENT_ID);
+    return config;
+});
+
 // One shared refresh per burst: rotation burns the refresh token on every use, so parallel 401s must share a single call. vault:auth-deep-dive#tokens
 let refreshPromise: Promise<void> | null = null;
 
