@@ -19,7 +19,7 @@ interface ProgressTrackerProps {
     lastPositionRef: MutableRefObject<number>;
 }
 
-const HEARTBEAT_MS = 60_000;
+const HEARTBEAT_MS = 15_000;
 const MIN_DELTA_S = 5;
 /** A single jump bigger than this is a seek, not playback — flush it. */
 const SEEK_JUMP_S = 30;
@@ -70,8 +70,8 @@ export default function ProgressTracker({
     const sendRef = useRef(send);
     sendRef.current = send;
 
-    // Heartbeat: 1 write/min while playing — the flush points below cover
-    // everything in between.
+    // Heartbeat: a write every 15 s while playing, so another device resumes close by.
+    // The flush points below cover everything in between.
     useEffect(() => {
         const id = setInterval(() => {
             if (pausedRef.current) return;
@@ -89,6 +89,12 @@ export default function ProgressTracker({
     useEffect(() => {
         if (ended) sendRef.current();
     }, [ended]);
+
+    // The first position is saved as soon as it counts, so the show appears in
+    // Continue watching on other devices within seconds of pressing Play.
+    useEffect(() => {
+        if (lastSentRef.current === 0 && currentTime >= MIN_DELTA_S) sendRef.current();
+    }, [currentTime]);
 
     // Seek detection: playback moves seconds at a time, so a 30s+ jump is the
     // user dragging the bar (or our own resume seek) — save it.
