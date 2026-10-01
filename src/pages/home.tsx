@@ -9,6 +9,7 @@ import MediaModalContainer from '@/components/media-modal-container';
 import { fetchGenres, type GenreInfo, type MediaItem } from '@/api/tmdb';
 import { useFavourites } from '@/hooks/use-favourites';
 import { useLibraryItems } from '@/hooks/use-library-items';
+import { useNextUp } from '@/hooks/use-next-up';
 import { useProgress } from '@/hooks/use-progress';
 import { useTitleList } from '@/hooks/use-title-list';
 import { continueCards, favouriteCards } from '@/lib/libraryCards';
@@ -213,7 +214,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     // TMDB's page-capped numbers (10,000, 20,001), so the rows count loaded titles.
     const searchTotal = movies.totalResults + shows.totalResults;
 
-    const continueList = continueCards(progress.rows, library.items);
+    const nextUp = useNextUp(progress.rows, library.items);
+    const continueList = continueCards(progress.rows, library.items, nextUp);
     const favouriteList = favouriteCards(favourites.rows, library.items);
 
     return (

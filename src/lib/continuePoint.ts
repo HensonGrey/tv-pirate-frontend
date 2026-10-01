@@ -1,6 +1,12 @@
 import type { ProgressRow } from '@/api/progress';
 import { fetchSeason } from '@/api/tmdb';
 
+/** An episode of a show. */
+export interface EpisodePoint {
+    season: number;
+    episode: number;
+}
+
 /** Where to pick a title back up. Season and episode are null for a movie. */
 export interface ContinuePoint {
     season: number | null;
@@ -38,7 +44,12 @@ export async function continuePoint(
 }
 
 /** The next episode in this season, else the first of the next season, else null. */
-async function episodeAfter(tmdbId: number, season: number, episode: number, seasonCount: number) {
+export async function episodeAfter(
+    tmdbId: number,
+    season: number,
+    episode: number,
+    seasonCount: number,
+): Promise<EpisodePoint | null> {
     try {
         const info = await fetchSeason(tmdbId, season);
         if (info.episodes.some((ep) => ep.episodeNumber === episode + 1)) {
