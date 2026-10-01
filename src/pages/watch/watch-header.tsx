@@ -65,7 +65,7 @@ export default function WatchHeader({ item, mediaType }: WatchHeaderProps) {
                     )}
                 </p>
             </div>
-            <FavouriteButton tmdbId={item.id} mediaType={mediaType} />
+            <FavouriteButton item={{ ...item, mediaType }} />
         </header>
     );
 }
