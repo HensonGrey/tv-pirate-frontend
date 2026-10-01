@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress';
+import { SyncKindEnum } from '@/api/liveSync';
 import type { MediaType } from '@/api/tmdb';
+import { useLiveSync } from '@/hooks/use-live-sync';
 import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 
@@ -43,6 +45,8 @@ export function useProgress() {
         }
         return latest;
     }, [rows]);
+
+    useLiveSync(SyncKindEnum.Progress, reload);
 
     function reload() {
         setStatus((current) =>

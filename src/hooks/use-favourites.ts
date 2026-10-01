@@ -6,7 +6,9 @@ import {
     removeFavourite,
     type FavouriteRow,
 } from '@/api/favourites';
+import { SyncKindEnum } from '@/api/liveSync';
 import type { MediaItem } from '@/api/tmdb';
+import { useLiveSync } from '@/hooks/use-live-sync';
 import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 
@@ -44,6 +46,8 @@ export function useFavourites() {
         () => new Set(rows.map((row) => titleKey(row.mediaType, row.tmdbId))),
         [rows],
     );
+
+    useLiveSync(SyncKindEnum.Favourites, reload);
 
     function reload() {
         setStatus((current) =>
