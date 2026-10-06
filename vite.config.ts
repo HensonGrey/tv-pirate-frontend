@@ -13,5 +13,6 @@ export default defineConfig({
     },
     server: {
         port: 5173, // fixed port so CORS on the backend can target it reliably
+        strictPort: true, // a busy 5173 fails loudly; on 5174 every API call would fail CORS
     },
 });
