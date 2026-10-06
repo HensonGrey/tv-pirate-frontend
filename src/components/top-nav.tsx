@@ -69,13 +69,14 @@ export default function TopNav({
     // Guests get a confirmation before signing out — there's no way back in.
     const isGuest = user.provider === 'GUEST';
 
-    async function handleDeleteAccount() {
+    // A guest's sign-out lands here too: no way back in means the account goes with it.
+    async function deleteAndSignOut(failureMessage: string) {
         setDeleting(true);
         try {
             await deleteAccount();
             onLogout();
         } catch (error) {
-            toast.error(getErrorMessage(error, 'Could not delete your account. Try again.'));
+            toast.error(getErrorMessage(error, failureMessage));
         } finally {
             setDeleting(false);
         }
@@ -263,7 +264,8 @@ export default function TopNav({
                 title="Sign out?"
                 confirmLabel="Sign out"
                 variant="destructive"
-                onConfirm={onLogout}
+                loading={deleting}
+                onConfirm={() => deleteAndSignOut('Could not sign out. Try again.')}
                 description="You signed in as a guest. Logging out means losing this guest account permanently."
             />
 
@@ -274,7 +276,7 @@ export default function TopNav({
                 confirmLabel="Delete account"
                 variant="destructive"
                 loading={deleting}
-                onConfirm={handleDeleteAccount}
+                onConfirm={() => deleteAndSignOut('Could not delete your account. Try again.')}
                 description="Your favourites and watch progress are deleted for good. Signing in again starts a new, empty account."
             />
         </header>
