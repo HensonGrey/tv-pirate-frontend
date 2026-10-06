@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { client } from './client';
+import { API_BASE, client } from './client';
 import { clearUser, getUser, saveUser, type StoredUser } from '@/lib/authStorage';
 
 export async function loginAsGuest(): Promise<StoredUser> {
@@ -7,6 +7,11 @@ export async function loginAsGuest(): Promise<StoredUser> {
     const { data } = await client.post<StoredUser>('/api/auth/guest');
     saveUser(data);
     return data;
+}
+
+/** A full-page navigation, not a request: the backend sends the browser to Google and back. */
+export function startGoogleSignIn(): void {
+    window.location.assign(`${API_BASE}/api/auth/google`);
 }
 
 /** Session probe through the shared client, so an expired 15-min access cookie gets the silent refresh; only a 401 means "not logged in" — any other failure keeps the cached user. */

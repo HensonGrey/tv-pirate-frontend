@@ -6,7 +6,8 @@ React frontend for the tv-pirate learning project.
 
 ## Features
 
-- **Guest login** (`/login`) — Google button is a stub (no OAuth credentials yet); "Continue as guest" opens a confirm dialog explaining the browser-scoped session.
+- **Sign-in** (`/login`) — the Google button is a full-page redirect through the backend (`/api/auth/google`), which lands back on `/` signed in, or on `/login?signInError=…` shown as a toast. "Continue as guest" opens a confirm dialog explaining the browser-scoped session.
+- **Delete account** — provider accounts can delete themselves from the avatar menu.
 - **Route protection** — `RequireAuth` probes `GET /api/me` on startup (three states: probing → authenticated → redirect to `/login`). Client guards are UX only; the backend enforces auth on every request.
 - **Silent session refresh** — axios interceptor catches 401s, runs one deduplicated refresh (rotation burns tokens, so parallel refreshes would fail), retries the original request. On failure: clears state and announces `SESSION_EXPIRED_EVENT`, which bounces the app to `/login`.
 - **httpOnly cookie auth** — `withCredentials: true` everywhere; localStorage holds only a non-sensitive user object (id, username, provider).

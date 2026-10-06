@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import ConfirmDialog from '@/components/confirm-dialog';
 import ThemeIconButton from '@/components/theme-icon-button';
-import { loginAsGuest } from '@/api/auth';
+import { loginAsGuest, startGoogleSignIn } from '@/api/auth';
 import { formatWait, retryAfterMs } from '@/lib/apiError';
+import { getSignInErrorMessage } from '@/lib/signInErrorEnum';
 
 /** Official Google "G" mark as inline SVG — no external assets needed. */
 function GoogleIcon() {
@@ -35,6 +37,21 @@ function GoogleIcon() {
 export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
     const [loading, setLoading] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const signInError = searchParams.get('signInError');
+
+    // Shown once, then dropped from the URL so a reload doesn't repeat it; the id dedupes StrictMode's second run.
+    useEffect(() => {
+        if (signInError === null) return;
+        toast.error(getSignInErrorMessage(signInError), { id: 'sign-in-error' });
+        setSearchParams(
+            (params) => {
+                params.delete('signInError');
+                return params;
+            },
+            { replace: true },
+        );
+    }, [signInError, setSearchParams]);
 
     async function handleGuestLogin() {
         setLoading(true);
@@ -74,9 +91,7 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
                         variant="outline"
                         aria-label="Continue with Google"
                         className="mx-auto size-12 border-foreground/20 dark:border-foreground/25"
-                        onClick={() =>
-                            toast.info('Google login is not wired up yet — coming soon.')
-                        }
+                        onClick={startGoogleSignIn}
                     >
                         <GoogleIcon />
                     </Button>
