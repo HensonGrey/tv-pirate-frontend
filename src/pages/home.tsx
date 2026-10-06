@@ -12,6 +12,7 @@ import { useLibraryItems } from '@/hooks/use-library-items';
 import { useNextUp } from '@/hooks/use-next-up';
 import { useProgress } from '@/hooks/use-progress';
 import { useTitleList } from '@/hooks/use-title-list';
+import { getErrorMessage } from '@/lib/apiError';
 import { continueCards, favouriteCards } from '@/lib/libraryCards';
 import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
@@ -192,7 +193,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     useEffect(() => {
         fetchGenres()
             .then((list) => dispatch({ type: 'genres-loaded', genreList: list }))
-            .catch(() => toast.error('Could not load the genre list'));
+            .catch((error) => toast.error(getErrorMessage(error, 'Could not load the genre list')));
     }, []);
 
     /** Enter / the search icon: search now instead of waiting out the debounce. */

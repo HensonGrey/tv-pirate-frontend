@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { fetchSources, type StreamSourceDto } from '@/api/stream';
-import { formatWait, retryAfterMs } from '@/lib/apiError';
+import { formatWait, getErrorMessage, retryAfterMs } from '@/lib/apiError';
 import { autoRetryWait, type WatchSelection } from './watch-selection';
 
 /** Resolve-on-play: browsing episodes costs no provider calls and no video buffering.
@@ -47,7 +47,7 @@ export function usePlayback(provider: string | null, selection: WatchSelection) 
                 const tooMany = retryAfterMs(error);
                 toast.error(
                     tooMany === null
-                        ? `Could not resolve sources from ${provider}`
+                        ? getErrorMessage(error, `Could not resolve sources from ${provider}`)
                         : `Too many requests — try again in ${formatWait(tooMany)}`,
                     { id: 'resolve-retry' },
                 );

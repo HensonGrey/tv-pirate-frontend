@@ -4,6 +4,7 @@ import { clearProgress, fetchProgress, type ProgressRow } from '@/api/progress';
 import { SyncKindEnum } from '@/api/liveSync';
 import type { MediaType } from '@/api/tmdb';
 import { useLiveSync } from '@/hooks/use-live-sync';
+import { getErrorMessage } from '@/lib/apiError';
 import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 
@@ -64,11 +65,11 @@ export function useProgress() {
         const removed = rows.filter(isTitle);
 
         setRows((current) => current.filter((row) => !isTitle(row)));
-        return clearProgress(mediaType, tmdbId).catch(() => {
+        return clearProgress(mediaType, tmdbId).catch((error) => {
             setRows((current) =>
                 [...current, ...removed].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
             );
-            toast.error('Could not clear progress');
+            toast.error(getErrorMessage(error, 'Could not clear your progress for this title'));
         });
     }
 

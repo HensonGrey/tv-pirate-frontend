@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import Kicker from '@/components/kicker';
 import { fetchStreamProviders } from '@/api/stream';
+import { getErrorMessage } from '@/lib/apiError';
 import { setPreferredProvider } from '@/lib/providerPreference';
 import { chipClasses } from './chip-classes';
 
@@ -21,7 +22,9 @@ export default function ProviderPicker({ provider, onChange }: ProviderPickerPro
             .then((list) => {
                 if (!cancelled) setProviders(list);
             })
-            .catch(() => toast.error('Could not load the provider list'));
+            .catch((error) =>
+                toast.error(getErrorMessage(error, 'Could not load the provider list')),
+            );
         return () => {
             cancelled = true;
         };

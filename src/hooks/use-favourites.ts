@@ -9,6 +9,7 @@ import {
 import { SyncKindEnum } from '@/api/liveSync';
 import type { MediaItem } from '@/api/tmdb';
 import { useLiveSync } from '@/hooks/use-live-sync';
+import { getErrorMessage } from '@/lib/apiError';
 import { LoadStatusEnum } from '@/lib/loadStatusEnum';
 import { titleKey } from '@/lib/titleKey';
 
@@ -70,10 +71,17 @@ export function useFavourites() {
         const request = wasFavourite
             ? removeFavourite(row.tmdbId, row.mediaType)
             : addFavourite(row.tmdbId, row.mediaType);
-        request.catch(() => {
+        request.catch((error) => {
             // Undo just this change, so a later click made meanwhile survives.
             setRows((current) => (wasFavourite ? [...current, row] : without(current, key)));
-            toast.error(`Could not ${wasFavourite ? 'remove' : 'add'} ${name}`);
+            toast.error(
+                getErrorMessage(
+                    error,
+                    wasFavourite
+                        ? `Could not remove ${name} from your list`
+                        : `Could not add ${name} to your list`,
+                ),
+            );
         });
 
         if (toastId.current !== null) toast.dismiss(toastId.current);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import Kicker from '@/components/kicker';
+import { getErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
 import { fetchSeason, type SeasonInfo } from '@/api/tmdb';
 import { chipClasses } from './chip-classes';
@@ -42,9 +43,11 @@ export default function EpisodePanel({
                 setSeasonInfo(info);
                 if (!info.episodes.some((ep) => ep.episodeNumber === episode)) onSelectEpisode(1);
             })
-            .catch(() => {
+            .catch((error) => {
                 if (requestId.current !== id) return;
-                toast.error('Could not load the episode list');
+                toast.error(
+                    getErrorMessage(error, `Could not load the episodes of season ${season}`),
+                );
             })
             .finally(() => {
                 if (requestId.current !== id) return;

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import MediaModal from '@/components/media-modal';
 import { fetchTitleDetail, type MediaItem } from '@/api/tmdb';
 import type { ProgressRow } from '@/api/progress';
+import { getErrorMessage } from '@/lib/apiError';
 import { watchPath } from '@/lib/watchPath';
 
 interface MediaModalContainerProps {
@@ -40,8 +41,11 @@ export default function MediaModalContainer({
             .then((loaded) => {
                 if (!cancelled) setDetail(loaded);
             })
-            .catch(() => {
-                if (!cancelled) toast.error('Could not load full details');
+            .catch((error) => {
+                if (!cancelled)
+                    toast.error(
+                        getErrorMessage(error, "Could not load this title's runtime and seasons"),
+                    );
             });
         return () => {
             cancelled = true;

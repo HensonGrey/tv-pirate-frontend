@@ -7,10 +7,19 @@ export function retryAfterMs(error: unknown): number | null {
     return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 }
 
-/** The backend's own explanation (its ProblemDetail `detail`) when it sent one, else the fallback. */
+// Only these carry text written for a person: a 400 is our own bug and its detail describes the API, and every 5xx is scrubbed to one generic line.
+const USER_FACING_STATUSES = new Set([404, 429]);
+
+/** The backend's own explanation when it wrote one for the user, else the fallback, which names what failed. */
 export function getErrorMessage(error: unknown, fallback: string): string {
-    const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined;
-    return typeof detail === 'string' && detail.trim() !== '' ? detail : fallback;
+    if (!axios.isAxiosError(error)) return fallback;
+    if (!error.response) return "Can't reach the server. Check your connection and try again.";
+    const detail = error.response.data?.detail;
+    return USER_FACING_STATUSES.has(error.response.status) &&
+        typeof detail === 'string' &&
+        detail.trim() !== ''
+        ? detail
+        : fallback;
 }
 
 /** "20 s" under a minute, "18 min" above. */

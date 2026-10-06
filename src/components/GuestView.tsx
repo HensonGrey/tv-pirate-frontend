@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import ConfirmDialog from '@/components/confirm-dialog';
 import ThemeIconButton from '@/components/theme-icon-button';
 import { loginAsGuest, startGoogleSignIn } from '@/api/auth';
-import { formatWait, retryAfterMs } from '@/lib/apiError';
+import { formatWait, getErrorMessage, retryAfterMs } from '@/lib/apiError';
 import { getSignInErrorMessage } from '@/lib/signInErrorEnum';
 
 /** Official Google "G" mark as inline SVG — no external assets needed. */
@@ -60,11 +60,10 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
             setConfirmOpen(false);
             onLoggedIn();
         } catch (error) {
-            console.error(error);
             const wait = retryAfterMs(error);
             toast.error(
                 wait === null
-                    ? 'Could not create a guest session. Is the backend running?'
+                    ? getErrorMessage(error, 'Could not create a guest session. Please try again.')
                     : `Too many new guest sessions from your network. Try again in ${formatWait(wait)}.`,
             );
         } finally {
