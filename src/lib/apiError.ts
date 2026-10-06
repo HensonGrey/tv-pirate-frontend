@@ -7,6 +7,12 @@ export function retryAfterMs(error: unknown): number | null {
     return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 }
 
+/** The backend's own explanation (its ProblemDetail `detail`) when it sent one, else the fallback. */
+export function getErrorMessage(error: unknown, fallback: string): string {
+    const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined;
+    return typeof detail === 'string' && detail.trim() !== '' ? detail : fallback;
+}
+
 /** "20 s" under a minute, "18 min" above. */
 export function formatWait(ms: number): string {
     const seconds = Math.ceil(ms / 1000);
