@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { loadTurnstile } from '@/lib/turnstile';
+import { getTurnstileErrorMessage } from '@/lib/turnstileErrorEnum';
 
 interface TurnstileWidgetProps {
     siteKey: string;
@@ -26,7 +27,11 @@ export default function TurnstileWidget({ siteKey, onToken }: TurnstileWidgetPro
                     theme,
                     callback: onToken,
                     'expired-callback': () => onToken(null),
-                    'error-callback': () => onToken(null),
+                    'error-callback': (errorCode) => {
+                        onToken(null);
+                        // The id keeps Turnstile's automatic retries from stacking toasts.
+                        toast.error(getTurnstileErrorMessage(errorCode), { id: 'turnstile-error' });
+                    },
                 });
             })
             .catch(() => {

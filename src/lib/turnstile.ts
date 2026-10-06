@@ -9,7 +9,7 @@ interface TurnstileOptions {
     theme: 'light' | 'dark';
     callback: (token: string) => void;
     'expired-callback': () => void;
-    'error-callback': () => void;
+    'error-callback': (errorCode: string) => void;
 }
 
 export interface TurnstileApi {
