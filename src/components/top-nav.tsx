@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Ref } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Clapperboard, Compass, Library, LogOut, Search } from 'lucide-react';
+import { Clapperboard, Compass, Library, LogOut, Search, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import {
@@ -14,6 +15,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ConfirmDialog from '@/components/confirm-dialog';
 import ThemeIconButton from '@/components/theme-icon-button';
+import { deleteAccount } from '@/api/auth';
+import { getErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
 import type { StoredUser } from '@/lib/authStorage';
 
@@ -59,10 +62,24 @@ export default function TopNav({
 }: TopNavProps) {
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
     const [signOutOpen, setSignOutOpen] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const mobileSearchRef = useRef<HTMLInputElement>(null);
 
     // Guests get a confirmation before signing out — there's no way back in.
     const isGuest = user.provider === 'GUEST';
+
+    async function handleDeleteAccount() {
+        setDeleting(true);
+        try {
+            await deleteAccount();
+            onLogout();
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Could not delete your account. Try again.'));
+        } finally {
+            setDeleting(false);
+        }
+    }
 
     useEffect(() => {
         if (mobileSearchOpen) mobileSearchRef.current?.focus();
@@ -188,6 +205,16 @@ export default function TopNav({
                                 <LogOut aria-hidden />
                                 Sign out
                             </DropdownMenuItem>
+                            {/* Guests have no delete: signing out already discards their account. */}
+                            {!isGuest && (
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeleteOpen(true)}
+                                >
+                                    <Trash2 aria-hidden />
+                                    Delete account
+                                </DropdownMenuItem>
+                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
@@ -235,6 +262,17 @@ export default function TopNav({
                 variant="destructive"
                 onConfirm={onLogout}
                 description="You signed in as a guest. Logging out means losing this guest account permanently."
+            />
+
+            <ConfirmDialog
+                open={deleteOpen}
+                onOpenChange={setDeleteOpen}
+                title="Delete your account?"
+                confirmLabel="Delete account"
+                variant="destructive"
+                loading={deleting}
+                onConfirm={handleDeleteAccount}
+                description="Your favourites and watch progress are deleted for good. Signing in again starts a new, empty account."
             />
         </header>
     );

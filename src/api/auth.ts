@@ -24,6 +24,11 @@ export async function fetchMe(): Promise<StoredUser | null> {
     }
 }
 
+/** Permanent: the account and everything it owns. Throws on failure so the caller can keep the user signed in. */
+export async function deleteAccount(): Promise<void> {
+    await client.delete('/api/auth/account');
+}
+
 /** Local-first logout: UI clears immediately, server revoke is best-effort. */
 export async function logout(): Promise<void> {
     clearUser();
