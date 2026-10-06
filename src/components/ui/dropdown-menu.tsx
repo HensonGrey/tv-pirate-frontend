@@ -71,7 +71,7 @@ function DropdownMenuItem({
         <MenuPrimitive.Item
             data-slot="dropdown-menu-item"
             className={cn(
-                'flex cursor-pointer items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none select-none data-highlighted:bg-muted [&_svg]:size-4 [&_svg]:shrink-0',
+                'flex cursor-pointer items-center justify-start gap-2.5 rounded-lg px-2.5 py-2 text-sm outline-none select-none data-highlighted:bg-muted [&_svg]:size-4 [&_svg]:shrink-0',
                 variant === 'destructive' &&
                     'text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive',
                 className,

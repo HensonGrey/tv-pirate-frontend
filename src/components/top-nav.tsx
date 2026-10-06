@@ -207,13 +207,16 @@ export default function TopNav({
                             </DropdownMenuItem>
                             {/* Guests have no delete: signing out already discards their account. */}
                             {!isGuest && (
-                                <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() => setDeleteOpen(true)}
-                                >
-                                    <Trash2 aria-hidden />
-                                    Delete account
-                                </DropdownMenuItem>
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        variant="destructive"
+                                        onClick={() => setDeleteOpen(true)}
+                                    >
+                                        <Trash2 aria-hidden />
+                                        Delete account
+                                    </DropdownMenuItem>
+                                </>
                             )}
                         </DropdownMenuContent>
                     </DropdownMenu>
