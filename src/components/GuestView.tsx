@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import ConfirmDialog from '@/components/confirm-dialog';
 import ThemeIconButton from '@/components/theme-icon-button';
+import TurnstileWidget from '@/components/turnstile-widget';
 import { loginAsGuest, startGoogleSignIn } from '@/api/auth';
 import { formatWait, getErrorMessage, retryAfterMs } from '@/lib/apiError';
 import { getSignInErrorMessage } from '@/lib/signInErrorEnum';
+import { TURNSTILE_SITE_KEY } from '@/lib/turnstile';
 
 /** Official Google "G" mark as inline SVG — no external assets needed. */
 function GoogleIcon() {
@@ -33,10 +35,13 @@ function GoogleIcon() {
     );
 }
 
-/** Entry screen: Google above, guest below the divider. The guest path asks for confirmation first — the session is browser-bound and can't be upgraded. */
+/** Entry screen: Google above, guest below the divider. The guest path asks for confirmation first — the session is browser-bound and can't be upgraded — and passes Cloudflare's bot check there. */
 export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
     const [loading, setLoading] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+    // Bumped after each try: a new key remounts the widget for a fresh single-use token.
+    const [turnstileKey, setTurnstileKey] = useState(0);
     const [searchParams, setSearchParams] = useSearchParams();
     const signInError = searchParams.get('signInError');
 
@@ -56,10 +61,11 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
     async function handleGuestLogin() {
         setLoading(true);
         try {
-            await loginAsGuest();
+            await loginAsGuest(turnstileToken);
             setConfirmOpen(false);
             onLoggedIn();
         } catch (error) {
+            setTurnstileKey((key) => key + 1);
             const wait = retryAfterMs(error);
             toast.error(
                 wait === null
@@ -114,6 +120,7 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
                 title="Continue as guest?"
                 confirmLabel="Continue"
                 loading={loading}
+                confirmDisabled={TURNSTILE_SITE_KEY !== undefined && turnstileToken === null}
                 onConfirm={handleGuestLogin}
                 description={
                     <div className="flex flex-col gap-1.5">
@@ -121,6 +128,13 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
                             Your session is tied to this browser — clearing cookies starts you over.
                         </p>
                         <p>It can't be upgraded to a full account later.</p>
+                        {TURNSTILE_SITE_KEY && (
+                            <TurnstileWidget
+                                key={turnstileKey}
+                                siteKey={TURNSTILE_SITE_KEY}
+                                onToken={setTurnstileToken}
+                            />
+                        )}
                     </div>
                 }
             />

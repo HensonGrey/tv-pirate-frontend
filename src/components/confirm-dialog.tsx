@@ -21,6 +21,8 @@ interface ConfirmDialogProps {
     cancelLabel?: string;
     /** Greys both buttons, blocks clicks and shows a sweep on the confirm button. */
     loading?: boolean;
+    /** Greys only the confirm button, e.g. while a prerequisite isn't met yet. */
+    confirmDisabled?: boolean;
     onConfirm: () => void;
 }
 
@@ -38,6 +40,7 @@ export default function ConfirmDialog({
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
     loading = false,
+    confirmDisabled = false,
     onConfirm,
 }: ConfirmDialogProps) {
     return (
@@ -58,7 +61,7 @@ export default function ConfirmDialog({
                     <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
                     <AlertDialogAction
                         variant={variant === 'destructive' ? 'destructive' : 'default'}
-                        disabled={loading}
+                        disabled={loading || confirmDisabled}
                         onClick={onConfirm}
                         className="relative overflow-hidden"
                     >

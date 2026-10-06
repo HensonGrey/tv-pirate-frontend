@@ -2,9 +2,10 @@ import axios from 'axios';
 import { API_BASE, client } from './client';
 import { clearUser, getUser, saveUser, type StoredUser } from '@/lib/authStorage';
 
-export async function loginAsGuest(): Promise<StoredUser> {
+/** turnstileToken is null when the bot check is off (no site key). */
+export async function loginAsGuest(turnstileToken: string | null): Promise<StoredUser> {
     // The token pair arrives as Set-Cookie headers — nothing sensitive to store.
-    const { data } = await client.post<StoredUser>('/api/auth/guest');
+    const { data } = await client.post<StoredUser>('/api/auth/guest', { turnstileToken });
     saveUser(data);
     return data;
 }

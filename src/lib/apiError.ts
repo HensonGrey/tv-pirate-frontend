@@ -8,7 +8,7 @@ export function retryAfterMs(error: unknown): number | null {
 }
 
 // Only these carry text written for a person: a 400 is our own bug and its detail describes the API, and every 5xx is scrubbed to one generic line.
-const USER_FACING_STATUSES = new Set([404, 429]);
+const USER_FACING_STATUSES = new Set([403, 404, 429]);
 
 /** The backend's own explanation when it wrote one for the user, else the fallback, which names what failed. */
 export function getErrorMessage(error: unknown, fallback: string): string {
