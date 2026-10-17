@@ -39,6 +39,7 @@ export default function PrivacyPage() {
             <Section title="Who else receives data">
                 <ul className="flex list-disc flex-col gap-1.5 pl-5">
                     <li>Oracle Cloud hosts the site and its database in Frankfurt, Germany.</li>
+                    <li>Cloudflare R2 keeps a nightly backup copy of the database in the EU.</li>
                     <li>
                         Cloudflare runs the bot check when you continue as a guest and sees your IP
                         address and browser details.
@@ -68,6 +69,10 @@ export default function PrivacyPage() {
                         removes the account and everything it holds at once.
                     </li>
                     <li>Sign-in tokens expire after 30 days and are then deleted.</li>
+                    <li>
+                        Backup copies are deleted after 30 days, so a deleted account is gone from
+                        them within a month.
+                    </li>
                     <li>New Relic deletes error logs automatically after a limited time.</li>
                 </ul>
             </Section>
