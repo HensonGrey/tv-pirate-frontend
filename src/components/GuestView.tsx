@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -111,6 +111,11 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
                     <Button size="lg" className="h-11 w-full" onClick={() => setConfirmOpen(true)}>
                         Continue as guest
                     </Button>
+
+                    <div className="mx-auto flex gap-4 text-sm text-muted-foreground [&_a]:underline-offset-4 [&_a:hover]:text-foreground [&_a:hover]:underline">
+                        <Link to="/privacy">Privacy notice</Link>
+                        <Link to="/terms">Terms</Link>
+                    </div>
                 </CardContent>
             </Card>
 

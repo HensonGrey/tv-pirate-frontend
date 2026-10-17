@@ -4,6 +4,8 @@ import { Toaster } from '@/components/ui/sonner';
 import GuestView from '@/components/GuestView';
 import HomePage from '@/pages/home';
 import WatchPage from '@/pages/watch';
+import PrivacyPage from '@/pages/privacy';
+import TermsPage from '@/pages/terms';
 import RequireAuth from '@/components/require-auth';
 import { SESSION_EXPIRED_EVENT } from '@/api/client';
 import { fetchMe, logout } from '@/api/auth';
@@ -87,6 +89,9 @@ function App() {
                             }
                         />
                     </Route>
+                    {/* Public: readable before signing in. */}
+                    <Route path="/privacy" element={<PrivacyPage />} />
+                    <Route path="/terms" element={<TermsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
                 <Toaster position="bottom-right" />
