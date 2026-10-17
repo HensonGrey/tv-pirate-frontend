@@ -1,5 +1,5 @@
 /** The subtitle proxy: one VTT track per title/episode, resolved and
- * cached server-side (the OpenSubtitles key never reaches the browser).
+ * cached server-side (the SubDL key never reaches the browser).
  * A miss returns null — captions are an enhancement, never an error. */
 
 import { client } from './client';

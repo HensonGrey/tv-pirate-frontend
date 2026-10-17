@@ -6,7 +6,7 @@ export interface VttCue {
 }
 
 /** Minimal WebVTT parser — cue blocks only, no styles/regions/chapters.
- * Enough for OpenSubtitles output (and it strips inline tags, which React
+ * Enough for SRT converted to VTT (and it strips inline tags, which React
  * would render as literal text). */
 export function parseVtt(vtt: string): VttCue[] {
     const cues: VttCue[] = [];
