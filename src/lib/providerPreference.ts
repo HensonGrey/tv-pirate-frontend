@@ -11,3 +11,7 @@ export function getPreferredProvider(): string | null {
 export function setPreferredProvider(provider: string) {
     localStorage.setItem(KEY, provider);
 }
+
+export function clearPreferredProvider() {
+    localStorage.removeItem(KEY);
+}

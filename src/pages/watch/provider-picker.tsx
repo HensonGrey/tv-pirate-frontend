@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import Kicker from '@/components/kicker';
 import { fetchStreamProviders } from '@/api/stream';
 import { getErrorMessage } from '@/lib/apiError';
-import { setPreferredProvider } from '@/lib/providerPreference';
+import { clearPreferredProvider, setPreferredProvider } from '@/lib/providerPreference';
 import { chipClasses } from './chip-classes';
 
 interface ProviderPickerProps {
@@ -30,11 +30,17 @@ export default function ProviderPicker({ provider, onChange }: ProviderPickerPro
         };
     }, []);
 
-    // A remembered provider can vanish from the registry (removed, or a burned
-    // upstream) — fall back to the first listed instead of resolving a name the
-    // backend rejects. Not remembered: only a click is a real preference.
+    // A remembered provider can vanish from the registry (removed, or switched
+    // off) — drop it and fall back to the first enabled one. Not remembered:
+    // only a click is a real preference.
     useEffect(() => {
-        if (providers.length > 0 && (provider == null || !providers.includes(provider))) {
+        if (providers.length === 0) return;
+        if (provider == null) {
+            onChange(providers[0]);
+            return;
+        }
+        if (!providers.includes(provider)) {
+            clearPreferredProvider();
             onChange(providers[0]);
         }
     }, [providers, provider, onChange]);

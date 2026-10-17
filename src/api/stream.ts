@@ -12,7 +12,8 @@ export interface StreamSourceDto {
     proxyUrl: string;
 }
 
-/** The picker list, sorted by the backend. */
+/** The picker list, sorted by the backend. Disabled providers are absent, so the
+ * picker can't offer one the resolve endpoint would reject. */
 export async function fetchStreamProviders(): Promise<string[]> {
     const { data } = await client.get<string[]>('/api/stream/providers');
     return data;
