@@ -22,4 +22,6 @@ npm run dev
 
 The dev server proxies nothing — the API client talks to `VITE_API_BASE_URL` (default `http://localhost:8080`; copy `.env.example` to `.env.local` to override). Start the backend first.
 
+**Production:** the `Dockerfile` builds the site into a Caddy image. The `Caddyfile` serves it over HTTPS and passes `/api` to the backend. The backend repo's `compose.yml` runs it (see its README, "Deploy").
+
 Backend: [tv-pirate](https://github.com/HensonGrey/tv-pirate)

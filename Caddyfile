@@ -1,0 +1,18 @@
+# Serves the built site and passes /api to the backend. DOMAIN comes from backend/.env via compose.
+{$DOMAIN} {
+	# Not compressed: live sync must reach the browser event by event, and video is compressed already.
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+	handle {
+		root * /srv
+		encode zstd gzip
+		# Every app route (/login, /movie/123, ...) is index.html; React picks the page.
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
