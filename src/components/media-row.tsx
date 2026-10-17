@@ -75,6 +75,38 @@ export default function MediaRow({ list, onSelect }: MediaRowProps) {
         if (list.canLoadMore && rowRef.current && isNearEnd(rowRef.current)) list.loadMore();
     }, [list]);
 
+    // The mouse wheel scrolls the row sideways while the pointer is on it. A native listener,
+    // because React's onWheel is passive and can't stop the page from scrolling too.
+    useEffect(() => {
+        const row = rowRef.current;
+        if (!row) return;
+        let target = 0;
+        let lastWheelAt = -Infinity;
+        let pageScrolledAt = -Infinity;
+        const onPageScroll = (event: Event) => (pageScrolledAt = event.timeStamp);
+        const onWheel = (event: WheelEvent) => {
+            // Firefox may count in lines rather than pixels.
+            const delta = event.deltaY * (event.deltaMode ? 40 : 1);
+            // A sideways swipe already scrolls the row, and a page scroll under way carries on over it.
+            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+            if (event.timeStamp - pageScrolledAt < 300) return;
+            // Steps add up from the last target: a smooth scroll restarted mid-way would drop them.
+            if (event.timeStamp - lastWheelAt > 200) target = row.scrollLeft;
+            lastWheelAt = event.timeStamp;
+            const next = Math.min(Math.max(target + delta, 0), row.scrollWidth - row.clientWidth);
+            if (next === target) return; // at an end, the page scrolls instead
+            event.preventDefault();
+            target = next;
+            row.scrollTo({ left: target, behavior: 'smooth' });
+        };
+        window.addEventListener('scroll', onPageScroll, { passive: true });
+        row.addEventListener('wheel', onWheel, { passive: false });
+        return () => {
+            window.removeEventListener('scroll', onPageScroll);
+            row.removeEventListener('wheel', onWheel);
+        };
+    }, []);
+
     return (
         <div
             ref={rowRef}
@@ -83,8 +115,9 @@ export default function MediaRow({ list, onSelect }: MediaRowProps) {
                 setFirst(firstRenderedIndex(row));
                 if (list.canLoadMore && isNearEnd(row)) list.loadMore();
             }}
-            // scroll-px-1 stops a 4px snap nudge from the padding.
-            className="-mx-1 mt-3 flex snap-x scroll-px-1 gap-4 overflow-x-auto px-1 pt-1 pb-3 scrollbar-row [--card-w:9rem] sm:[--card-w:10rem] xl:[--card-w:11rem]"
+            // Snapping only on touch screens: with a mouse it pulls short wheel steps back to the
+            // same card. scroll-px-1 stops a 4px snap nudge from the padding.
+            className="-mx-1 mt-3 flex pointer-coarse:snap-x scroll-px-1 gap-4 overflow-x-auto px-1 pt-1 pb-3 scrollbar-row [--card-w:9rem] sm:[--card-w:10rem] xl:[--card-w:11rem]"
         >
             <Spacer count={first} />
             {shown.map((item) => (
