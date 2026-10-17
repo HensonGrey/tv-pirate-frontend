@@ -4,6 +4,7 @@ import { API_BASE, CLIENT_ID, client } from '@/api/client';
 export enum SyncKindEnum {
     Favourites = 'favourites',
     Progress = 'progress',
+    Theme = 'theme',
 }
 
 const DEBOUNCE_MS = 300;

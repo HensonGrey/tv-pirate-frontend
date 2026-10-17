@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router';
+import { useThemeSync } from '@/hooks/use-theme-sync';
 import type { StoredUser } from '@/lib/authStorage';
 
 /** Full-screen splash while the startup /api/me probe is in flight. */
@@ -8,6 +9,12 @@ function Splash() {
             <p className="animate-pulse text-sm text-muted-foreground">tv-pirate</p>
         </div>
     );
+}
+
+/** The signed-in pages, with the account's theme kept in step across devices. */
+function SignedIn() {
+    useThemeSync();
+    return <Outlet />;
 }
 
 /** Client-side route guard (UX only — the backend enforces auth on every request). Splash while the session probe is in flight, redirect to /login once the answer is known. */
@@ -20,5 +27,5 @@ export default function RequireAuth({
 }) {
     if (!checked) return <Splash />;
     if (!user) return <Navigate to="/login" replace />;
-    return <Outlet />;
+    return <SignedIn />;
 }

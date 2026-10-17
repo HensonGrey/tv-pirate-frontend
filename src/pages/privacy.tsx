@@ -19,7 +19,8 @@ export default function PrivacyPage() {
                         in and show who you are.
                     </li>
                     <li>
-                        Your favourites and watch progress, so you can pick up where you left off.
+                        Your favourites, watch progress and light or dark theme choice, so you can
+                        pick up where you left off on any device.
                     </li>
                     <li>
                         Sign-in cookies that keep you signed in. They are strictly necessary; there
@@ -79,9 +80,10 @@ export default function PrivacyPage() {
 
             <Section title="Why this is allowed">
                 <p>
-                    Your account, favourites and progress are needed to provide the service you
-                    signed up for (GDPR Art. 6(1)(b)). The bot check, rate limits and error logs
-                    keep the site secure and working, which is a legitimate interest (Art. 6(1)(f)).
+                    Your account, favourites, progress and theme choice are needed to provide the
+                    service you signed up for (GDPR Art. 6(1)(b)). The bot check, rate limits and
+                    error logs keep the site secure and working, which is a legitimate interest
+                    (Art. 6(1)(f)).
                 </p>
             </Section>
 
