@@ -235,9 +235,10 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
                 </div>
             )}
             {/* Same app shell as home: tabs navigate back to the matching section,
-          search runs on Enter by opening the search page. */}
+          Enter opens the search page, and typing drops matching titles down. */}
             <TopNav
                 wide
+                suggest
                 onTabChange={(tab) => navigate('/', { state: { tab } })}
                 query={query}
                 onQueryChange={setQuery}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RefObject } from 'react';
+import type { KeyboardEvent, RefObject } from 'react';
+import { useNavigate } from 'react-router';
 import type { LucideIcon } from 'lucide-react';
 import { Clapperboard, Compass, Library, LogOut, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,10 +15,14 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ConfirmDialog from '@/components/confirm-dialog';
+import SearchSuggestions from '@/components/search-suggestions';
 import ThemeIconButton from '@/components/theme-icon-button';
 import { deleteAccount } from '@/api/auth';
+import type { MediaItem } from '@/api/tmdb';
+import { useSearchSuggestions } from '@/hooks/use-search-suggestions';
 import { getErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
+import { watchPath } from '@/lib/watchPath';
 import type { StoredUser } from '@/lib/authStorage';
 
 export type TabId = 'browse' | 'library';
@@ -38,6 +43,9 @@ interface TopNavProps {
     /** Watch pages render a wider content column than home — the nav follows
      *  it so the edges stay aligned. */
     wide?: boolean;
+    /** Watch page: matching titles drop down under the search box and picking one
+     *  opens it. Home shows live results in the page itself, so it leaves this off. */
+    suggest?: boolean;
     user: StoredUser;
     onLogout: () => void;
 }
@@ -57,6 +65,7 @@ export default function TopNav({
     onQueryChange,
     onSubmit,
     wide = false,
+    suggest = false,
     user,
     onLogout,
 }: TopNavProps) {
@@ -87,19 +96,88 @@ export default function TopNav({
         if (mobileSearchOpen) mobileSearchRef.current?.focus();
     }, [mobileSearchOpen]);
 
-    const searchInput = (inputRef: RefObject<HTMLInputElement | null>, className: string) => (
+    const navigate = useNavigate();
+    const titles = useSearchSuggestions(query, suggest);
+    // The dropdown is open from typing or focus until Escape, blur or a pick. `active` is
+    // the row the arrow keys are on; -1 = none, so Enter still opens the full search.
+    const [listOpen, setListOpen] = useState(false);
+    const [active, setActive] = useState(-1);
+    const showList = listOpen && titles.length > 0;
+
+    // New results: the old row number would point at a different title.
+    useEffect(() => setActive(-1), [titles]);
+
+    function closeList() {
+        setListOpen(false);
+        setActive(-1);
+    }
+
+    function openTitle({ mediaType, id, title }: MediaItem) {
+        if (!mediaType) return;
+        closeList();
+        navigate(watchPath(mediaType, id, title));
+    }
+
+    function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+        const rows = titles.length;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            if (rows === 0) return;
+            event.preventDefault(); // or the caret jumps to the start/end of the text
+            setListOpen(true);
+            if (event.key === 'ArrowDown') setActive((row) => (row + 1) % rows);
+            else setActive((row) => (row <= 0 ? rows - 1 : row - 1));
+        } else if (event.key === 'Escape') {
+            if (showList) {
+                event.preventDefault(); // or type="search" wipes the text too
+                closeList();
+            } else {
+                setMobileSearchOpen(false);
+            }
+        } else if (event.key === 'Enter') {
+            if (showList && active >= 0) openTitle(titles[active]);
+            else onSubmit();
+        }
+    }
+
+    // Combobox semantics only where suggestions are on: home keeps a plain search field.
+    const comboboxProps = (listId: string) =>
+        suggest
+            ? {
+                  role: 'combobox',
+                  'aria-expanded': showList,
+                  'aria-autocomplete': 'list' as const,
+                  'aria-controls': showList ? listId : undefined,
+                  'aria-activedescendant':
+                      showList && active >= 0 ? `${listId}-${active}` : undefined,
+              }
+            : undefined;
+
+    // `listId` names this box's dropdown: the mobile row mounts beside the desktop box,
+    // so each needs its own.
+    const searchInput = (
+        listId: string,
+        inputRef: RefObject<HTMLInputElement | null>,
+        className: string,
+    ) => (
         <div className={cn('relative', className)}>
             <Input
                 ref={inputRef}
                 type="search"
                 value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                onKeyDown={(event) => {
-                    if (event.key === 'Escape') setMobileSearchOpen(false);
-                    if (event.key === 'Enter') onSubmit();
+                onChange={(event) => {
+                    onQueryChange(event.target.value);
+                    setListOpen(true);
+                    // Typing on: Enter should search the new text, not pick a row of the old list.
+                    setActive(-1);
                 }}
+                onFocus={() => setListOpen(true)}
+                // shortcut: iOS Safari doesn't blur on a tap on blank page, so the list stays
+                // open there; add a document pointerdown listener if that matters.
+                onBlur={closeList}
+                onKeyDown={handleSearchKeyDown}
                 placeholder="Search movies & shows"
                 aria-label="Search movies and shows"
+                {...comboboxProps(listId)}
                 // pr-9: text stays clear of the X. The browser's own cancel button is hidden.
                 className="h-9 w-full pr-9 pl-9 [&::-webkit-search-cancel-button]:hidden"
             />
@@ -130,6 +208,9 @@ export default function TopNav({
                 >
                     <X aria-hidden className="size-4" />
                 </button>
+            )}
+            {showList && (
+                <SearchSuggestions id={listId} items={titles} active={active} onPick={openTitle} />
             )}
         </div>
     );
@@ -187,7 +268,11 @@ export default function TopNav({
 
                 <div className="ml-auto flex items-center gap-1">
                     {/* Desktop search */}
-                    {searchInput(desktopSearchRef, 'hidden md:block md:w-64 lg:w-96 xl:w-md')}
+                    {searchInput(
+                        'desktop-suggestions',
+                        desktopSearchRef,
+                        'hidden md:block md:w-64 lg:w-96 xl:w-md',
+                    )}
                     {/* Mobile search toggle */}
                     <button
                         type="button"
@@ -275,7 +360,9 @@ export default function TopNav({
 
             {/* Mobile search row */}
             {mobileSearchOpen && (
-                <div className="px-4 pt-1 pb-2 md:hidden">{searchInput(mobileSearchRef, '')}</div>
+                <div className="px-4 pt-1 pb-2 md:hidden">
+                    {searchInput('mobile-suggestions', mobileSearchRef, '')}
+                </div>
             )}
 
             <ConfirmDialog

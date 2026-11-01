@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
+import { useEffect, useState, type ComponentProps } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router';
 import { Toaster } from '@/components/ui/sonner';
 import GuestView from '@/components/GuestView';
 import HomePage from '@/pages/home';
@@ -17,6 +17,14 @@ function SearchRedirect() {
     if (old !== null) params.set('search', old);
     params.delete('q');
     return <Navigate to={{ pathname: '/', search: params.toString() }} replace />;
+}
+
+/** One WatchPage instance serves every /movie/:id and /tv/:id URL, so going from one title
+ * to another (the nav's search suggestions do) would keep the old title's season, episode and
+ * playback. The key makes each title a fresh page. */
+function WatchRoute({ mediaType, ...props }: ComponentProps<typeof WatchPage>) {
+    const { id } = useParams();
+    return <WatchPage key={`${mediaType}/${id}`} mediaType={mediaType} {...props} />;
 }
 
 function App() {
@@ -79,13 +87,17 @@ function App() {
                         <Route
                             path="/movie/:id"
                             element={
-                                <WatchPage mediaType="movie" user={user!} onLogout={handleLogout} />
+                                <WatchRoute
+                                    mediaType="movie"
+                                    user={user!}
+                                    onLogout={handleLogout}
+                                />
                             }
                         />
                         <Route
                             path="/tv/:id"
                             element={
-                                <WatchPage mediaType="tv" user={user!} onLogout={handleLogout} />
+                                <WatchRoute mediaType="tv" user={user!} onLogout={handleLogout} />
                             }
                         />
                     </Route>
