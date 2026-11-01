@@ -12,6 +12,9 @@ export function usePlayback(provider: string | null, selection: WatchSelection) 
     const key = `${provider}|${mediaType}|${tmdbId}|${season}|${episode}`;
 
     const [requestedFor, setRequestedFor] = useState<string | null>(null);
+    // Forgotten as soon as the selection moves, so coming back to it (a pick, or the page
+    // following another device) shows Play again instead of restarting the old stream.
+    if (requestedFor !== null && requestedFor !== key) setRequestedFor(null);
     const requested = requestedFor === key;
     // Kept with the selection they were resolved for, so a stale result never reaches
     // the player — or credits its position to a newly picked episode.

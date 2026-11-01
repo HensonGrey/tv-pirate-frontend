@@ -21,6 +21,22 @@ export async function fetchProgress(): Promise<ProgressRow[]> {
     return data;
 }
 
+// When this tab sent each position (title, episode, second): its own live notes are skipped, so
+// these only come back in a later reload, where the watch page must not take them for another
+// device's. All are kept (a few a minute while playing), so a lost or reordered save still matches.
+const sentAt = new Map<string, number>();
+
+function positionKey(position: {
+    tmdbId: number;
+    mediaType: MediaType;
+    season?: number | null;
+    episode?: number | null;
+    progressSeconds: number;
+}): string {
+    const { mediaType, tmdbId, season, episode, progressSeconds } = position;
+    return `${mediaType}|${tmdbId}|${season ?? ''}|${episode ?? ''}|${progressSeconds}`;
+}
+
 /** One heartbeat. Season/episode only for tv — movies leave them undefined. */
 export async function saveProgress(payload: {
     tmdbId: number;
@@ -30,7 +46,15 @@ export async function saveProgress(payload: {
     progressSeconds: number;
     durationSeconds: number;
 }): Promise<void> {
+    // Noted before sending: a reload can read the row before this request answers.
+    sentAt.set(positionKey(payload), performance.now());
     await client.put('/api/progress', payload);
+}
+
+/** True when this tab itself sent `row`'s position at or after `since` (a performance.now()). */
+export function savedHereSince(row: ProgressRow, since: number): boolean {
+    const at = sentAt.get(positionKey(row));
+    return at !== undefined && at >= since;
 }
 
 /** "Start over": drop the row so the next visit starts from zero. */
