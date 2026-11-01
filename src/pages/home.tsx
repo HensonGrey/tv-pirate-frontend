@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useReducer } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import TopNav, { type TabId } from '@/components/top-nav';
 import BrowseResults from '@/components/browse-results';
+import ConfirmDialog from '@/components/confirm-dialog';
 import GenreChips from '@/components/genre-chips';
 import LibraryView from '@/components/library-view';
 import MediaModalContainer from '@/components/media-modal-container';
@@ -117,6 +118,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     );
     const navigate = useNavigate();
     const { tab, query, debouncedQuery, genreList, selected } = state;
+    // The Continue watching card whose X was pressed, while its confirm dialog is open.
+    const [removing, setRemoving] = useState<MediaItem | null>(null);
 
     /** Set params (an empty value removes one), keeping the rest; replace, so
      * back doesn't step through every keystroke and chip click. */
@@ -211,7 +214,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         void progress.clear(mediaType, id).then(() => navigate(watchPath(mediaType, id, title)));
     }
 
-    /** The X on a Continue watching card: clear every saved row for the title and stay here. */
+    /** Remove a title from Continue watching: clear every saved row for it and stay here. */
     function removeFromContinueWatching(target: MediaItem) {
         if (!target.mediaType) return;
         void progress.clear(target.mediaType, target.id);
@@ -282,7 +285,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         continueCards={continueList}
                         favouriteCards={favouriteList}
                         onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-                        onRemove={removeFromContinueWatching}
+                        onRemove={setRemoving}
                         onBrowse={() => dispatch({ type: 'tab', tab: 'browse' })}
                     />
                 ) : !searching && trimmed ? (
@@ -322,6 +325,23 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     onToggleFavourite={favourites.toggle}
                     onStartOver={startOver}
                     onClose={() => dispatch({ type: 'select', item: null })}
+                />
+            )}
+
+            {/* Mounted only while asking, so its text always names the title that was pressed. */}
+            {removing && (
+                <ConfirmDialog
+                    open
+                    onOpenChange={() => setRemoving(null)}
+                    title="Remove from Continue watching?"
+                    description={`Your saved progress for “${removing.title ?? 'Untitled'}” is removed on all your devices.`}
+                    confirmLabel="Remove"
+                    variant="destructive"
+                    // clear() is optimistic: the card is gone at once, so closing needs no wait.
+                    onConfirm={() => {
+                        removeFromContinueWatching(removing);
+                        setRemoving(null);
+                    }}
                 />
             )}
         </div>
