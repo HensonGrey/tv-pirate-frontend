@@ -6,7 +6,7 @@ import type { StoredUser } from '@/lib/authStorage';
 function Splash() {
     return (
         <div className="flex min-h-dvh items-center justify-center">
-            <p className="animate-pulse text-sm text-muted-foreground">tv-pirate</p>
+            <p className="animate-pulse text-sm text-muted-foreground">Adomination</p>
         </div>
     );
 }

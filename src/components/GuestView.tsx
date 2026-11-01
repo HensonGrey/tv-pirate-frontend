@@ -85,7 +85,7 @@ export default function GuestView({ onLoggedIn }: { onLoggedIn: () => void }) {
             <Card className="w-full max-w-md shadow-lg ring-foreground/25 [--card-spacing:--spacing(7)]">
                 <CardHeader className="items-center gap-1.5 text-center">
                     <CardTitle className="font-heading text-2xl font-bold tracking-tight">
-                        tv-pirate
+                        Adomination
                     </CardTitle>
                     <CardDescription className="text-base">
                         Watch together. No account needed.
