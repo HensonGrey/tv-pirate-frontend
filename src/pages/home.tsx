@@ -211,6 +211,12 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
         void progress.clear(mediaType, id).then(() => navigate(watchPath(mediaType, id, title)));
     }
 
+    /** The X on a Continue watching card: clear every saved row for the title and stay here. */
+    function removeFromContinueWatching(target: MediaItem) {
+        if (!target.mediaType) return;
+        void progress.clear(target.mediaType, target.id);
+    }
+
     // Only a search's totals are real counts; trending and discover report
     // TMDB's page-capped numbers (10,000, 20,001), so the rows count loaded titles.
     const searchTotal = movies.totalResults + shows.totalResults;
@@ -276,6 +282,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         continueCards={continueList}
                         favouriteCards={favouriteList}
                         onSelect={(picked) => dispatch({ type: 'select', item: picked })}
+                        onRemove={removeFromContinueWatching}
                         onBrowse={() => dispatch({ type: 'tab', tab: 'browse' })}
                     />
                 ) : !searching && trimmed ? (
