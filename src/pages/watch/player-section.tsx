@@ -86,10 +86,16 @@ export default function PlayerSection({
                                 type="button"
                                 disabled={!provider}
                                 onClick={playback.play}
-                                className="relative flex flex-col items-center gap-3 rounded-2xl p-4 text-foreground transition-colors outline-none hover:text-gold focus-visible:ring-3 focus-visible:ring-gold/60 disabled:opacity-50"
+                                // Fixed white, not theme tokens: this box is black in both themes.
+                                className="group relative flex flex-col items-center gap-3 rounded-2xl p-4 text-white outline-none focus-visible:ring-3 focus-visible:ring-gold/60 disabled:pointer-events-none disabled:opacity-50"
                             >
-                                <Play aria-hidden className="size-14" />
-                                <span className="text-sm font-medium">
+                                <span className="grid size-20 place-items-center rounded-full bg-white text-black shadow-xl shadow-black/50 transition-colors group-hover:bg-gold">
+                                    <Play
+                                        aria-hidden
+                                        className="size-9 translate-x-0.5 fill-current"
+                                    />
+                                </span>
+                                <span className="text-sm font-semibold transition-colors group-hover:text-gold">
                                     {episodeLabel ? `Play ${episodeLabel}` : 'Play'}
                                 </span>
                             </button>
