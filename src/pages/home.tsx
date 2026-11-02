@@ -323,7 +323,11 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     }
                     onToggleFavourite={favourites.toggle}
                     onStartOver={startOver}
-                    onClearProgress={setRemoving}
+                    onClearProgress={(item) => {
+                        // The confirm then sits alone over the library, not over the details.
+                        setRemoving(item);
+                        dispatch({ type: 'select', item: null });
+                    }}
                     onClose={() => dispatch({ type: 'select', item: null })}
                 />
             )}
