@@ -323,11 +323,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     }
                     onToggleFavourite={favourites.toggle}
                     onStartOver={startOver}
-                    onClearProgress={(item) => {
-                        // The confirm then sits alone over the library, not over the details.
-                        setRemoving(item);
-                        dispatch({ type: 'select', item: null });
-                    }}
+                    onClearProgress={setRemoving}
                     onClose={() => dispatch({ type: 'select', item: null })}
                 />
             )}
@@ -345,6 +341,8 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     onConfirm={() => {
                         removeFromContinueWatching(removing);
                         setRemoving(null);
+                        // Accepted: the details close with the card, not on the trash press.
+                        dispatch({ type: 'select', item: null });
                     }}
                 />
             )}
