@@ -1,4 +1,4 @@
-import { Skull, WifiOff, X } from 'lucide-react';
+import { Skull, WifiOff } from 'lucide-react';
 import MediaCard from '@/components/media-card';
 import { Button } from '@/components/ui/button';
 import type { MediaItem } from '@/api/tmdb';
@@ -15,8 +15,6 @@ interface LibraryViewProps {
     /** Every card opens the detail modal — the reminder of what it was, with
      * Continue watching / Start over right there. */
     onSelect: (item: MediaItem) => void;
-    /** The X on a Continue watching card: drop the title's saved progress. */
-    onRemove: (item: MediaItem) => void;
     onBrowse: () => void;
 }
 
@@ -38,7 +36,6 @@ export default function LibraryView({
     continueCards,
     favouriteCards,
     onSelect,
-    onRemove,
     onBrowse,
 }: LibraryViewProps) {
     if (loading) {
@@ -99,27 +96,13 @@ export default function LibraryView({
                     <SectionTitle>Continue watching</SectionTitle>
                     <div className={GRID_CLASSES}>
                         {continueCards.map((card) => (
-                            // The X sits beside the card: a button can't nest inside a button.
-                            <div
+                            <MediaCard
                                 key={`${card.item.mediaType}:${card.item.id}`}
-                                className="group/card relative flex flex-col"
-                            >
-                                <MediaCard
-                                    item={card.item}
-                                    progressPct={card.progressPct ?? undefined}
-                                    badge={card.badge ?? undefined}
-                                    onSelect={onSelect}
-                                />
-                                <button
-                                    type="button"
-                                    aria-label={`Remove ${card.item.title ?? 'Untitled'} from Continue watching`}
-                                    onClick={() => onRemove(card.item)}
-                                    // any-pointer: a touch laptop's main pointer is still a mouse.
-                                    className="absolute top-2 right-2 flex size-9 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur-sm transition outline-none group-focus-within/card:opacity-100 group-hover/card:opacity-100 any-pointer-coarse:opacity-100 hover:bg-black/85 focus-visible:ring-3 focus-visible:ring-gold/60"
-                                >
-                                    <X aria-hidden className="size-5" />
-                                </button>
-                            </div>
+                                item={card.item}
+                                progressPct={card.progressPct ?? undefined}
+                                badge={card.badge ?? undefined}
+                                onSelect={onSelect}
+                            />
                         ))}
                     </div>
                 </section>

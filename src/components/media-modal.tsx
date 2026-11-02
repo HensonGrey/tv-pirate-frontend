@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, type ReactNode } from 'react';
-import { Clock, Heart, Layers, Play, RotateCcw, Star, X } from 'lucide-react';
+import { Clock, Heart, Layers, Play, RotateCcw, Star, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import MediaPoster from '@/components/media-poster';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,10 @@ interface MediaModalProps {
     onWatch: () => void;
     /** Clears the saved row and starts from zero (only shown with progress). */
     onStartOver: () => void;
+    /** Whether a saved row exists, even when its duration is unknown. */
+    hasProgress: boolean;
+    /** Drops the title's saved progress so it leaves Continue watching. */
+    onClearProgress: () => void;
     onClose: () => void;
 }
 
@@ -32,13 +36,19 @@ export default function MediaModal({
     onToggleFavourite,
     onWatch,
     onStartOver,
+    hasProgress,
+    onClearProgress,
     onClose,
 }: MediaModalProps) {
     const closeRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         function onKey(event: KeyboardEvent) {
-            if (event.key === 'Escape') onClose();
+            if (event.key !== 'Escape') return;
+            // The clear-progress confirm sits on top; Esc should close only it.
+            if (event.target instanceof Element && event.target.closest('[role="alertdialog"]'))
+                return;
+            onClose();
         }
         document.addEventListener('keydown', onKey);
         const previousOverflow = document.body.style.overflow;
@@ -94,8 +104,18 @@ export default function MediaModal({
             />
 
             <div className="animate-in fade-in zoom-in-95 slide-in-from-bottom-6 sm:slide-in-from-bottom-0 relative max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border bg-popover shadow-2xl duration-200 sm:max-h-[85dvh] sm:rounded-2xl">
-                {/* Top-right controls: heart for favourites, X to close. */}
+                {/* Top-right controls: clear progress, favourite, close. */}
                 <div className="absolute top-3 right-3 z-10 flex gap-2">
+                    {hasProgress && (
+                        <button
+                            type="button"
+                            aria-label="Clear watch progress"
+                            onClick={onClearProgress}
+                            className="flex size-9 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-colors outline-none hover:bg-black/65 focus-visible:ring-2 focus-visible:ring-white/70"
+                        >
+                            <Trash2 aria-hidden className="size-5" />
+                        </button>
+                    )}
                     <button
                         type="button"
                         aria-label={isFavourite ? 'Remove from favourites' : 'Add to favourites'}
@@ -138,7 +158,7 @@ export default function MediaModal({
                     </div>
 
                     <div className="flex flex-col gap-4 p-5 sm:p-6">
-                        <div className="pr-24">
+                        <div className={hasProgress ? 'pr-32' : 'pr-24'}>
                             {metaParts.length > 0 && (
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                     {metaParts.map((part, index) => (
