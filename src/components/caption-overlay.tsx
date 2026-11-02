@@ -15,7 +15,7 @@ export default function CaptionOverlay({
     delaySeconds: number;
 }) {
     const currentTime = useMediaState('currentTime');
-    const shifted = currentTime + delaySeconds;
+    const shifted = currentTime - delaySeconds;
     const cue = cues.find((c) => shifted >= c.start && shifted < c.end);
     if (!cue) return null;
     return (
