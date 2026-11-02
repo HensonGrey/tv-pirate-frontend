@@ -18,7 +18,7 @@ interface MediaModalProps {
     onStartOver: () => void;
     /** Whether a saved row exists, even when its duration is unknown. */
     hasProgress: boolean;
-    /** Asks to clear the title's saved progress; the page closes this modal to confirm. */
+    /** Asks to clear the title's saved progress; the page confirms first. */
     onClearProgress: () => void;
     onClose: () => void;
 }
@@ -44,7 +44,11 @@ export default function MediaModal({
 
     useEffect(() => {
         function onKey(event: KeyboardEvent) {
-            if (event.key === 'Escape') onClose();
+            if (event.key !== 'Escape') return;
+            // The clear-progress confirm sits on top; Esc should close only it.
+            if (event.target instanceof Element && event.target.closest('[role="alertdialog"]'))
+                return;
+            onClose();
         }
         document.addEventListener('keydown', onKey);
         const previousOverflow = document.body.style.overflow;
