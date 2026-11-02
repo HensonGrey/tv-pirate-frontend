@@ -3,8 +3,12 @@ import '@vidstack/react/player/styles/default/layouts/video.css';
 import '@vidstack/react/player/styles/default/gestures.css';
 
 import { useState, type RefObject } from 'react';
-import { MediaPlayer, MediaProvider, Poster } from '@vidstack/react';
-import { DefaultVideoLayout, defaultLayoutIcons } from '@vidstack/react/player/layouts/default';
+import { MediaPlayer, MediaProvider, Poster, SeekButton } from '@vidstack/react';
+import {
+    DefaultTooltip,
+    DefaultVideoLayout,
+    defaultLayoutIcons,
+} from '@vidstack/react/player/layouts/default';
 import CaptionOverlay from '@/components/caption-overlay';
 import ProgressTracker from '@/components/progress-tracker';
 import SubtitleDelayMenu from '@/components/subtitle-delay-menu';
@@ -76,19 +80,45 @@ export default function VideoPlayer({
             />
             <DefaultVideoLayout
                 icons={defaultLayoutIcons}
-                slots={
-                    cues.length > 0
-                        ? {
-                              settingsMenuItemsEnd: (
-                                  <SubtitleDelayMenu
-                                      delay={subtitleDelay}
-                                      onChange={setSubtitleDelay}
-                                  />
-                              ),
-                          }
-                        : undefined
-                }
+                // On touch screens a sideways swipe anywhere on the video scrubbed through the
+                // whole runtime, so swipes and page scrolls jumped it. The bar still seeks.
+                noScrubGesture
+                slots={{
+                    settingsMenuItemsEnd:
+                        cues.length > 0 ? (
+                            <SubtitleDelayMenu delay={subtitleDelay} onChange={setSubtitleDelay} />
+                        ) : undefined,
+                    // Phones: around the big play button. Otherwise: after the bar's play button.
+                    smallLayout: {
+                        beforePlayButton: <SkipButton seconds={-10} />,
+                        afterPlayButton: <SkipButton seconds={10} />,
+                    },
+                    largeLayout: {
+                        afterPlayButton: (
+                            <>
+                                <SkipButton seconds={-10} />
+                                <SkipButton seconds={10} />
+                            </>
+                        ),
+                    },
+                }}
             />
         </MediaPlayer>
+    );
+}
+
+/** A ±10 s button in the layout's own look; its icons carry the "10". */
+function SkipButton({ seconds }: { seconds: -10 | 10 }) {
+    const label = seconds < 0 ? 'Back 10 seconds' : 'Forward 10 seconds';
+    const Icon =
+        seconds < 0
+            ? defaultLayoutIcons.SeekButton.Backward
+            : defaultLayoutIcons.SeekButton.Forward;
+    return (
+        <DefaultTooltip content={label} placement="top">
+            <SeekButton className="vds-seek-button vds-button" seconds={seconds} aria-label={label}>
+                <Icon className="vds-icon" />
+            </SeekButton>
+        </DefaultTooltip>
     );
 }
