@@ -4,6 +4,7 @@ import { WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TopNav from '@/components/top-nav';
 import Kicker from '@/components/kicker';
+import { savedHereSince } from '@/api/progress';
 import { fetchTitleDetail, type MediaItem, type MediaType } from '@/api/tmdb';
 import { useProgress } from '@/hooks/use-progress';
 import { continuePoint } from '@/lib/continuePoint';
@@ -85,6 +86,8 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     titleRowsRef.current = titleRows;
     const newest = titleRows[0];
     const newestSave = newest ? `${newest.season}|${newest.episode}|${newest.updatedAt}` : null;
+    // Saves this tab makes from here on are this page's own; earlier ones are where you left off.
+    const [openedAt] = useState(() => performance.now());
 
     // Moves the page to where you left off (see continuePoint): on load, and whenever another
     // device saves something newer — even over an episode you picked here. Never while this
@@ -92,6 +95,10 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
     // leaves your own pick alone.
     useEffect(() => {
         if (!item || playingRef.current) return;
+        // A reload also brings back what this page's player saved: following that would
+        // pull the page back to the episode it just played, or seek a paused one.
+        const latest = titleRowsRef.current[0];
+        if (latest && savedHereSince(latest, openedAt)) return;
         let cancelled = false;
         continuePoint(titleRowsRef.current, tmdbId, item.seasons ?? 1).then((point) => {
             if (cancelled || !point) return;
@@ -105,7 +112,7 @@ export default function WatchPage({ mediaType, user, onLogout }: WatchPageProps)
         return () => {
             cancelled = true;
         };
-    }, [item, tmdbId, newestSave]);
+    }, [item, tmdbId, newestSave, openedAt]);
 
     function selectSeason(next: number) {
         setSeason(next);
