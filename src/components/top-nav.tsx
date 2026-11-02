@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Ref } from 'react';
+import type { RefObject } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Clapperboard, Compass, Library, LogOut, Search, Trash2 } from 'lucide-react';
+import { Clapperboard, Compass, Library, LogOut, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
@@ -64,6 +64,7 @@ export default function TopNav({
     const [signOutOpen, setSignOutOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const desktopSearchRef = useRef<HTMLInputElement>(null);
     const mobileSearchRef = useRef<HTMLInputElement>(null);
 
     // Guests get a confirmation before signing out — there's no way back in.
@@ -86,7 +87,7 @@ export default function TopNav({
         if (mobileSearchOpen) mobileSearchRef.current?.focus();
     }, [mobileSearchOpen]);
 
-    const searchInput = (inputRef: Ref<HTMLInputElement> | undefined, className: string) => (
+    const searchInput = (inputRef: RefObject<HTMLInputElement | null>, className: string) => (
         <div className={cn('relative', className)}>
             <Input
                 ref={inputRef}
@@ -99,7 +100,8 @@ export default function TopNav({
                 }}
                 placeholder="Search movies & shows"
                 aria-label="Search movies and shows"
-                className="h-9 w-full pl-9"
+                // pr-9: text stays clear of the X. The browser's own cancel button is hidden.
+                className="h-9 w-full pr-9 pl-9 [&::-webkit-search-cancel-button]:hidden"
             />
             {/* After the input so it paints on top of it. */}
             <button
@@ -111,6 +113,24 @@ export default function TopNav({
             >
                 <Search aria-hidden className="size-4" />
             </button>
+            {query && (
+                <button
+                    type="button"
+                    aria-label="Clear search"
+                    title="Clear"
+                    onClick={() => {
+                        onQueryChange('');
+                        // Back to the input, or focus falls to the page once the X unmounts.
+                        inputRef.current?.focus();
+                    }}
+                    className={cn(
+                        ICON_BUTTON,
+                        'absolute top-1/2 right-1 size-7 -translate-y-1/2 rounded-md',
+                    )}
+                >
+                    <X aria-hidden className="size-4" />
+                </button>
+            )}
         </div>
     );
 
@@ -167,7 +187,7 @@ export default function TopNav({
 
                 <div className="ml-auto flex items-center gap-1">
                     {/* Desktop search */}
-                    {searchInput(undefined, 'hidden md:block md:w-64 lg:w-96 xl:w-md')}
+                    {searchInput(desktopSearchRef, 'hidden md:block md:w-64 lg:w-96 xl:w-md')}
                     {/* Mobile search toggle */}
                     <button
                         type="button"
