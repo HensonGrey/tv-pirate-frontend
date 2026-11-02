@@ -118,7 +118,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
     );
     const navigate = useNavigate();
     const { tab, query, debouncedQuery, genreList, selected } = state;
-    // The Continue watching card whose X was pressed, while its confirm dialog is open.
+    // The title whose clear-progress button was pressed, while its confirm dialog is open.
     const [removing, setRemoving] = useState<MediaItem | null>(null);
 
     /** Set params (an empty value removes one), keeping the rest; replace, so
@@ -285,7 +285,6 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                         continueCards={continueList}
                         favouriteCards={favouriteList}
                         onSelect={(picked) => dispatch({ type: 'select', item: picked })}
-                        onRemove={setRemoving}
                         onBrowse={() => dispatch({ type: 'tab', tab: 'browse' })}
                     />
                 ) : !searching && trimmed ? (
@@ -324,6 +323,7 @@ export default function HomePage({ user, onLogout }: HomePageProps) {
                     }
                     onToggleFavourite={favourites.toggle}
                     onStartOver={startOver}
+                    onClearProgress={setRemoving}
                     onClose={() => dispatch({ type: 'select', item: null })}
                 />
             )}

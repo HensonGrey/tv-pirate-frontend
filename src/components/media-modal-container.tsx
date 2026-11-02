@@ -15,6 +15,8 @@ interface MediaModalContainerProps {
     progressRow: ProgressRow | undefined;
     onToggleFavourite: (item: MediaItem) => void;
     onStartOver: (item: MediaItem) => void;
+    /** Clears the title's saved progress (the modal's trash button). */
+    onClearProgress: (item: MediaItem) => void;
     onClose: () => void;
 }
 
@@ -27,6 +29,7 @@ export default function MediaModalContainer({
     progressRow,
     onToggleFavourite,
     onStartOver,
+    onClearProgress,
     onClose,
 }: MediaModalContainerProps) {
     const navigate = useNavigate();
@@ -73,6 +76,8 @@ export default function MediaModalContainer({
                 navigate(watchPath(shown.mediaType, shown.id, shown.title));
             }}
             onStartOver={() => onStartOver(shown)}
+            hasProgress={progressRow != null}
+            onClearProgress={() => onClearProgress(selected)}
             onClose={onClose}
         />
     );
