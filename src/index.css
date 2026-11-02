@@ -192,3 +192,26 @@
         display: none;
     }
 }
+
+/* Video player (vidstack's default layout, pages/watch/video-player.tsx). On touch screens its
+   double-tap side seek and fullscreen fired on everyday touches, and a hidden gesture has no
+   area so it never fires — vidstack turns its own gestures off the same way. Desktop keeps
+   both, where double-clicking the sides is a seek. */
+@media (pointer: coarse) {
+    .vds-video-layout .vds-gesture[action^='seek:'],
+    .vds-video-layout .vds-gesture[action='toggle:fullscreen'] {
+        display: none;
+    }
+}
+
+/* Phone layout: the skip buttons flank the big play button, copying its size, backdrop and
+   nudge down. Their row lets touches through to the video, so they opt back in. */
+.vds-video-layout[data-sm] .vds-seek-button {
+    width: var(--video-sm-play-button-size, 45px);
+    height: var(--video-sm-play-button-size, 45px);
+    margin: 0 16px 2px;
+    border-radius: 100%;
+    background-color: var(--video-sm-play-button-bg, rgb(0 0 0 / 0.6));
+    transform: translateY(25%);
+    pointer-events: auto;
+}
